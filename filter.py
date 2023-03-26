@@ -2,9 +2,11 @@ import pandas as pd
 from datetime import timedelta
 from preprocessing import read_data
 
+import numpy as np
+
 def get_rebalance_dates(df_volume: pd.DataFrame) -> pd.DatetimeIndex:
     """
-    Récupère toutes les dates de rebalancement annuelles (31 décembre) dans le DataFrame.
+    Récupère toutes les dates de rebalancement annuelles (dernier jour avant le changement d'année) dans le DataFrame.
 
     Parameters
     ----------
@@ -14,88 +16,68 @@ def get_rebalance_dates(df_volume: pd.DataFrame) -> pd.DatetimeIndex:
     Returns
     -------
     pd.DatetimeIndex
-        Index contenant les dates de rebalancement annuelles (31 décembre).
+        Index contenant les dates de rebalancement annuelles (dernier jour avant le changement d'année).
 
     """
     # Convertir l'index en DatetimeIndex s'il ne l'est pas déjà
     if not isinstance(df_volume.index, pd.DatetimeIndex):
         df_volume.index = pd.to_datetime(df_volume.index)
-    return df_volume.index[df_volume.index.strftime('%m-%d') == '12-31']
 
-def filter_positive_volume_year(df_volume: pd.DataFrame, rebalance_dates: pd.DatetimeIndex) -> pd.DataFrame:
+    # Identifier les changements d'année dans l'index
+    years = df_volume.index.year
+    year_changes = np.where(years[:-1] != years[1:])[0]
+
+    # Sélectionner les dates de rebalancement comme étant les dernières dates avant les changements d'année
+    rebalance_dates = df_volume.index[year_changes]
+
+    return pd.DatetimeIndex(rebalance_dates)
+
+
+def filter_top_quantile(df_volume: pd.DataFrame, rebalance_dates: pd.DatetimeIndex, quantile: float) -> pd.DataFrame:
     """
-    Conserve les actions ayant un volume supérieur à 0 sur l'année précédant chaque rebalancement.
+    Filtrer les actions faisant partie du quantile supérieur sur
+    l'année précédant chaque date de rebalancement.
 
     Parameters
     ----------
     df_volume : pd.DataFrame
-        DataFrame contenant les volumes quotidiens des actifs.
+        DataFrame contenant les données à filtrer.
     rebalance_dates : pd.DatetimeIndex
-        Index contenant les dates de rebalancement annuelles (31 décembre).
+        Index contenant les dates de rebalancement.
+    quantile : float
+        Quantile à utiliser pour le filtrage.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame filtré contenant uniquement les actions avec des volumes positifs.
-
+        DataFrame avec les données filtrées.
     """
-    valid_assets = pd.Series(True, index=df_volume.columns)
-    for rebalance_date in rebalance_dates:
-        one_year_ago = rebalance_date - timedelta(days=252)
-        available_history = df_volume.loc[one_year_ago:rebalance_date]
-        valid_assets &= available_history.gt(0).all()
-    return df_volume.loc[:, valid_assets]
+    df_filtered = df_volume.copy()
+    for idx in range(len(rebalance_dates)):
+        if idx == 0:
+            one_year_start_date = df_volume.index[
+                0]  # Utiliser la première date du DataFrame
+        else:
+            one_year_start_date = rebalance_dates[idx - 1] + pd.DateOffset(
+                days=1)
 
-def filter_six_months_history(df_volume: pd.DataFrame, rebalance_dates: pd.DatetimeIndex) -> pd.DataFrame:
-    """
-    Exclut les actions sans historique de volume 6 mois avant chaque date de rebalancement.
+        one_year_data = df_volume.loc[one_year_start_date:rebalance_dates[idx]]
 
-    Parameters
-    ----------
-    df_volume : pd.DataFrame
-        DataFrame contenant les volumes quotidiens des actifs.
-    rebalance_dates : pd.DatetimeIndex
-        Index contenant les dates de rebalancement annuelles (31 décembre).
+        # Calculer le seuil unique pour chaque colonne
+        threshold = np.nanquantile(one_year_data, quantile)
+        print(threshold)
 
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame filtré contenant uniquement les actions avec un historique de volume suffisant.
+        # Conserver les actions qui satisfont le critère ou remplacer par des NaN pour chaque colonne
+        for col in one_year_data:
+            if one_year_data[col].mean() < threshold:
+                df_filtered.loc[one_year_start_date:rebalance_dates[idx],col] = np.nan
 
-    """
-    valid_assets = pd.Series(True, index=df_volume.columns)
-    for rebalance_date in rebalance_dates:
-        six_months_ago = rebalance_date - timedelta(days=6*20)
-        available_history = df_volume.loc[six_months_ago:rebalance_date]
-        valid_assets &= available_history.notna().all()
-    return df_volume.loc[:, valid_assets]
+    # Supprimer les lignes dont la date est supérieure à la dernière date de rééquilibrage
+    last_rebalance_date = rebalance_dates[-1]
+    df_filtered = df_filtered.loc[:last_rebalance_date]
 
-def filter_out_lowest_quantile(df_volume: pd.DataFrame,
-                               rebalance_dates: pd.DatetimeIndex,
-                               quantile: float = 0.2) -> pd.DataFrame:
-    """
-    Exclut le quantile inférieur de l'univers d'investissement en fonction des volumes les plus récents.
+    return df_filtered
 
-    Parameters
-    ----------
-    df_volume : pd.DataFrame
-        DataFrame contenant les volumes quotidiens des actifs.
-    rebalance_dates : pd.DatetimeIndex
-        Index contenant les dates de rebalancement annuelles (31 décembre).
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame filtré contenant uniquement les actions du quantile supérieur.
-
-    """
-    valid_assets = pd.Series(True, index=df_volume.columns)
-
-    for rebalance_date in rebalance_dates:
-        latest_volumes = df_volume.loc[rebalance_date]
-        quantile_cutoff = latest_volumes.quantile(quantile) # filtre du quantile
-        valid_assets &= latest_volumes.gt(quantile_cutoff)
-    return df_volume.loc[:, valid_assets]
 
 def filter_universe(df_volume: pd.DataFrame, quantile: float = 0.2) -> pd.DataFrame:
     """
@@ -123,17 +105,23 @@ def filter_universe(df_volume: pd.DataFrame, quantile: float = 0.2) -> pd.DataFr
 
        """
     rebalance_dates = get_rebalance_dates(df_volume)
-    filtered_volume = filter_positive_volume_year(df_volume, rebalance_dates)
-    filtered_volume = filter_six_months_history(filtered_volume, rebalance_dates)
-    filtered_volume = filter_out_lowest_quantile(filtered_volume,
-                                                 rebalance_dates,
-                                                 quantile=quantile)
+    filtered_volume = filter_top_quantile(df_volume=df_volume,
+                                             rebalance_dates=rebalance_dates,
+                                             quantile=quantile)
     return filtered_volume
+
+
 
 
 if "__main__" == __name__:
     df_volume = read_data("Constituents PX_VOLUME data")
-    filtered_volume = filter_universe(df_volume)
+    # drop la dernière colonne
+    df_volume = df_volume.iloc[:, :-1]
+
     print(df_volume.shape)
-    print(filtered_volume.shape)
-    print(filtered_volume.head())
+    print(get_rebalance_dates(df_volume))
+    filtered_volume = filter_universe(df_volume, quantile=0.2)
+    print(filtered_volume.isna().sum().sum())
+    # save dataframe to excel
+    filtered_volume.to_excel("filtered_volume.xlsx")
+
