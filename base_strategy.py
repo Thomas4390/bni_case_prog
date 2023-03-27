@@ -182,7 +182,6 @@ def inverse_volatility_strategy(
     return weights
 
 
-
 def check_weight_constraints(
         weights: pd.DataFrame,
         min_weight: float = 0.0005,
@@ -229,6 +228,42 @@ def check_weight_constraints(
     return constraints_respected
 
 
+def calculate_sector_weights(weights: pd.DataFrame, df_sectors: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcule les pondérations sectorielles après chaque date de rééquilibrage.
+
+    Parameters
+    ----------
+    weights : pd.DataFrame
+        DataFrame contenant les poids de chaque titre.
+    df_sectors : pd.DataFrame
+        DataFrame contenant la classification GICS de chaque titre.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame contenant les pondérations sectorielles pour chaque secteur GICS et chaque date de rééquilibrage.
+    """
+    rebalance_dates = weights.index
+    sector_weights_dict = {}
+
+    for date in rebalance_dates:
+        weights_on_date = (
+            weights.loc[date]
+            .dropna()
+            .apply(lambda x: round(x, 4) if not np.isnan(x) else x)
+        )
+
+        combined = pd.concat(
+            [weights_on_date, df_sectors.set_index("Ticker")], axis=1, join="inner"
+        )
+        sector_weights = combined.groupby("GICS Sector").sum()
+        sector_weights_dict[date] = sector_weights.T.squeeze()
+
+    sector_weights_df = pd.DataFrame.from_dict(sector_weights_dict).T
+    return sector_weights_df
+
+
 def check_sector_constraints(
     weights: pd.DataFrame,
     df_sectors: pd.DataFrame,
@@ -254,38 +289,28 @@ def check_sector_constraints(
     bool
         True si toutes les contraintes de poids sectorielles sont respectées, False sinon.
     """
-    rebalance_dates = weights.index
+    sector_weights_df = calculate_sector_weights(weights, df_sectors)
+    rebalance_dates = sector_weights_df.index
     constraints_respected = True
 
     for date in rebalance_dates:
         if verbose:
             print(f"\nVérification des contraintes sectorielles pour la date {date}:")
 
-        # On drop les poids qui sont NaN et on calcule l'arrondi à 4 décimales
-        weights_on_date = (
-            weights.loc[date]
-            .dropna()
-            .apply(lambda x: round(x, 4) if not np.isnan(x) else x)
-        )
+        sector_weights_on_date = sector_weights_df.loc[date]
 
-        combined = pd.concat(
-            [weights_on_date, df_sectors.set_index("Ticker")], axis=1, join="inner"
-        )
-        sector_weights = combined.groupby("GICS Sector").sum()
-
-        for sector, weight in sector_weights.iterrows():
-            weight_value = weight[0]
+        for sector, weight in sector_weights_on_date.items():
             if verbose:
-                print(f" - {sector}: {weight_value:.2%}")
-            if weight_value > sector_max_weight:
+                print(f" - {sector}: {weight:.2%}")
+            if weight > sector_max_weight:
                 constraints_respected = False
                 if verbose:
                     print(
                         f"   [ERREUR] La contrainte de poids sectorielle n'est pas respectée pour le secteur {sector} à la date {date}"
                     )
 
-
     return constraints_respected
+
 
 def check_weights_sum_to_one(weights: pd.DataFrame, tolerance: float = 1e-6) -> bool:
     """
@@ -330,6 +355,9 @@ if __name__ == "__main__":
                                           sector_max_weight=sector_max_weight)
     print(weights)
 
+    sector_weights = calculate_sector_weights(weights=weights, df_sectors=df_sectors)
+    print(sector_weights.iloc[0].sum())
+    print(sector_weights.max(axis=0))
     # save weights to parquet in converted_data folder
     weights.to_parquet("results_data/base_strategy_weights.parquet")
 
@@ -354,9 +382,9 @@ if __name__ == "__main__":
     else:
         print("\nDes erreurs ont été trouvées dans les contraintes sectorielles.")
 
-    is_valid = check_weights_sum_to_one(weights)
+    sum_to_one = check_weights_sum_to_one(weights)
 
-    if is_valid:
+    if sum_to_one:
         print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
     else:
         print(

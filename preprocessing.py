@@ -29,7 +29,7 @@ def xlsx_to_parquet(xlsx_file: str, parquet_file: str) -> None:
 
 
 def convert_xlsx_files_to_parquet(
-    file_list: List[str], output_folder: str = "data"
+    file_list: List[str], output_folder: str = "converted_data"
 ) -> None:
     """
     Convertit une liste de fichiers Excel en fichiers Parquet.
@@ -39,7 +39,8 @@ def convert_xlsx_files_to_parquet(
     file_list : List[str]
         Liste des fichiers Excel à convertir.
     output_folder : str, optional
-        Chemin du dossier de sortie pour les fichiers Parquet, par défaut "data".
+        Chemin du dossier de sortie pour les fichiers Parquet, par défaut
+        "converted_data".
 
     Returns
     -------
@@ -126,25 +127,35 @@ def read_reference_index_holdings() -> pd.DataFrame:
     df.sort_index(inplace=True)
     return df
 
-
-def read_gics_sectors() -> pd.DataFrame:
+def imput_missing_values_gics_sectors(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Charge le fichier de données de classification GICS des titres.
+    Impute les valeurs manquantes dans le DataFrame contenant la
+    classification GICS des titres.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame contenant la classification GICS des titres.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame contenant la classification GICS des titres.
+        DataFrame contenant la classification GICS des titres avec les valeurs
+        manquantes imputées.
     """
-    df = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
+    # Impute missing values in GICS Sector
+    df["GICS Sector"].fillna("Not Attributed", inplace=True)
+    # Save dataframe in parquet
+    df.to_parquet("converted_data/Constituents GICS sectors.parquet")
     return df
-
 
 
 def read_data(file_name: str) -> pd.DataFrame:
     """
-    Lit un fichier de données en format parquet et le transforme en un DataFrame. La première colonne du DataFrame doit
-    contenir des dates et est renommée en "Index Date" avant d'être définie comme index du DataFrame.
+    Lit un fichier de données en format parquet et le transforme en un DataFrame.
+    La première colonne du DataFrame doit
+    contenir des dates et est renommée en "Index Date" avant d'être définie
+    comme index du DataFrame.
 
     Parameters
     ----------
@@ -171,11 +182,19 @@ def read_data(file_name: str) -> pd.DataFrame:
 
 
 if "__main__" == __name__:
+
+    # Convertit les fichiers Excel en fichiers Parquet.
+    # Fonctionne seulement si aucun Excel n'est ouvert en simultané.
+    convert_xlsx_files_to_parquet(get_xlsx_files_in_folder("data"))
+
+    # Chargement des données pour vérifier que tout s'affiche correctement
     df_px = read_data("Constituents PX_LAST data")
     df_volume = read_data("Constituents PX_VOLUME data")
     df_total_ret = read_data("Constituents TOT_RET_INDEX data")
-    df_gics = read_gics_sectors()
+    df_gics = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
+    df_gics = imput_missing_values_gics_sectors(df_gics)
     df_ref = read_reference_index_holdings()
+
     print(df_ref.head())
     print(df_gics.head())
     print(df_total_ret.head())
