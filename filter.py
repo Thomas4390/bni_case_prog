@@ -84,14 +84,64 @@ def filter_top_quantile(
     return df_filtered
 
 
+import pandas as pd
+import numpy as np
+
+import pandas as pd
+import numpy as np
+
+
+def apply_nan_mask(df_source: pd.DataFrame,
+                   df_target: pd.DataFrame) -> pd.DataFrame:
+    """
+    Applique le masque des valeurs NaN d'un DataFrame source sur un DataFrame cible.
+    Il est possible que le DataFrame cible ait plus de NaN values que le DataFrame source.
+    Cela peut s'expliquer par des valeurs NaN deja présentes dans le DataFrame cible.
+
+    Parameters
+    ----------
+    df_source : pd.DataFrame
+        DataFrame source dont le masque NaN sera utilisé.
+    df_target : pd.DataFrame
+        DataFrame cible sur lequel le masque NaN sera appliqué.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame cible avec le masque NaN appliqué.
+    """
+    # Trouver l'intersection des dates et des colonnes
+    common_dates = df_source.index.intersection(df_target.index)
+    common_columns = df_source.columns.intersection(df_target.columns)
+
+    # Créer un masque NaN à partir du DataFrame source
+    nan_mask = df_source.loc[common_dates, common_columns].isna()
+
+    # Appliquer le masque NaN sur le DataFrame cible
+    df_target_masked = df_target.loc[common_dates, common_columns].where(
+        ~nan_mask, np.nan)
+
+    return df_target_masked
+
+
 if "__main__" == __name__:
     df_volume = read_data("Constituents PX_VOLUME data")
+    df_px = read_data("Constituents PX_LAST data")
+    df_total_ret = read_data("Constituents TOT_RET_INDEX data")
     # On ne prend pas en compte la dernière colonne qui
     # correspond au volume total de l'indice
     df_volume = df_volume.iloc[:, :-1]
     rebalance_dates = get_rebalance_dates(df_volume)
-    df_filtred = filter_top_quantile(
-        df_volume=df_volume, rebalance_dates=rebalance_dates, quantile=0.2
-    )
-    # save dataframe to parquet in converted_data folder
-    df_filtred.to_parquet("converted_data/filtered_data.parquet")
+
+    df_volume_filtered = filter_top_quantile(
+        df_volume=df_volume, rebalance_dates=rebalance_dates, quantile=0.2)
+
+    df_px_filtered = apply_nan_mask(df_source=df_volume_filtered, df_target=df_px)
+
+    df_total_ret_filtered = apply_nan_mask(
+        df_source=df_volume_filtered, df_target=df_total_ret)
+
+    # save all dataframe to parquet in the filtered_data folder
+    df_volume_filtered.to_parquet("filtered_data/volume_data.parquet")
+    df_px_filtered.to_parquet("filtered_data/PX_LAST_data.parquet")
+    df_total_ret_filtered.to_parquet("filtered_data/total_ret_data.parquet")

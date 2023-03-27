@@ -1,5 +1,9 @@
+from typing import Iterable
+
 import numpy as np
 import pandas as pd
+from numpy import ndarray
+
 from filter import get_rebalance_dates
 
 
@@ -42,16 +46,24 @@ def calculate_volatility(df_returns: pd.DataFrame, window: int) -> pd.DataFrame:
     return df_returns.rolling(window=window).std()
 
 
-def redistribute_weights(
-    weights: pd.Series, min_weight: float, max_weight: float
-) -> pd.Series:
+def redistribute_weights(weights: pd.Series, min_weight: float, max_weight: float) -> pd.Series:
+
     excess_weights = weights[weights > max_weight] - max_weight
     total_excess_weight = excess_weights.sum()
 
+    # Limiter les poids excédentaires à max_weight
     weights[weights > max_weight] = max_weight
-    remaining_weights = weights[weights >= min_weight]
-    remaining_weights += total_excess_weight / len(remaining_weights)
-    weights[weights >= min_weight] = remaining_weights
+
+    # Calculer les indices des poids restants qui sont supérieurs ou égaux à min_weight
+    remaining_indices = weights >= min_weight
+
+    # Calculer la somme des poids restants pour éviter de redistribuer les poids excédentaires aux poids inférieurs à min_weight
+    remaining_weights_sum = weights[remaining_indices].sum()
+
+    # Redistribuer le poids excédentaire proportionnellement aux poids restants
+    weights[remaining_indices] += (total_excess_weight / remaining_weights_sum) \
+                                  * (weights[remaining_indices] / remaining_weights_sum)
+
 
     return weights
 
@@ -71,12 +83,27 @@ def apply_sector_constraints(
         sector_allocation = sector_weights.sum()
 
         if sector_allocation > sector_max_weight:
-            redistributed_weights = redistribute_weights(
-                sector_weights, min_weight, max_weight
-            )
-            weights[sector_tickers] = redistributed_weights
+            # Calculer l'excédent de poids du secteur
+            excess_weight = sector_allocation - sector_max_weight
+
+            # Redistribuer l'excédent de poids proportionnellement aux actions du secteur
+            weights[sector_tickers] *= (sector_max_weight / sector_allocation)
+
+            # Redistribuer l'excédent de poids proportionnellement aux actions des autres secteurs
+            non_sector_tickers = weights.index.difference(sector_tickers)
+            weights[non_sector_tickers] += (excess_weight / weights.loc[non_sector_tickers].sum()) * weights.loc[non_sector_tickers]
+
+            # Appliquer les contraintes de poids individuelles aux actions du secteur
+            weights[sector_tickers] = weights[sector_tickers].clip(lower=min_weight, upper=max_weight)
+
+    # Appliquer les contraintes de poids individuelles aux actions de tous les secteurs
+    weights = weights.clip(lower=min_weight, upper=max_weight)
+
+    # Redistribuer les poids pour s'assurer que leur somme est égale à 1
+    weights /= weights.sum()
 
     return weights
+
 
 
 def inverse_volatility_strategy(
@@ -87,6 +114,30 @@ def inverse_volatility_strategy(
     min_weight: float = 0.0005,
     sector_max_weight: float = 0.4,
 ) -> pd.DataFrame:
+    """
+    Implémente la stratégie de volatilité inverse avec des contraintes
+    de poids individuelles et sectorielles.
+
+    Parameters
+    ----------
+    df_prices : pd.DataFrame
+        DataFrame contenant les prix des actions.
+    rebalance_dates : pd.DatetimeIndex
+        Index contenant les dates de rééquilibrage.
+    gics_sectors : pd.DataFrame
+        DataFrame contenant les informations sur les secteurs GICS des actions.
+    max_weight : float, optional
+        Poids maximum autorisé pour chaque action, par défaut 0.05 (5%).
+    min_weight : float, optional
+        Poids minimum autorisé pour chaque action, par défaut 0.0005 (0.05%).
+    sector_max_weight : float, optional
+        Poids maximum autorisé pour chaque secteur GICS, par défaut 0.4 (40%).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame contenant les poids associés à chaque action pour chaque date de rééquilibrage.
+    """
     df_returns = calculate_returns(df_prices)
     weights = pd.DataFrame(index=rebalance_dates, columns=df_prices.columns)
 
@@ -110,16 +161,26 @@ def inverse_volatility_strategy(
 
         # Appliquer les contraintes de poids individuelles et sectorielles
         rebalance_weights = weights.loc[rebalance_date]
-        rebalance_weights = rebalance_weights.clip(lower=min_weight, upper=max_weight)
+        rebalance_weights = rebalance_weights.clip(lower=min_weight,
+                                                   upper=max_weight)
         rebalance_weights = apply_sector_constraints(
-            rebalance_weights, gics_sectors, min_weight, max_weight, sector_max_weight
+            rebalance_weights, gics_sectors, min_weight, max_weight,
+            sector_max_weight
         )
+
+        # Appliquer à nouveau les contraintes de poids individuelles
+        rebalance_weights = rebalance_weights.clip(lower=min_weight,
+                                                   upper=max_weight)
 
         # Redistribuer les poids pour s'assurer que leur somme est égale à 1
         rebalance_weights /= rebalance_weights.sum()
         weights.loc[rebalance_date] = rebalance_weights
 
+    # Remplace tous les None par des NaN
+    weights.replace([None], np.nan, inplace=True)
+
     return weights
+
 
 
 def check_weight_constraints(
@@ -163,10 +224,7 @@ def check_weight_constraints(
                     print(
                         f"[ERREUR] La contrainte de poids individuelle n'est pas respectée pour le titre {ticker} à la date {date}: {weight:.2%}"
                     )
-            elif verbose:
-                print(
-                    f"[OK] La contrainte de poids individuelle est respectée pour le titre {ticker} à la date {date}: {weight:.2%}"
-                )
+
 
     return constraints_respected
 
@@ -225,12 +283,31 @@ def check_sector_constraints(
                     print(
                         f"   [ERREUR] La contrainte de poids sectorielle n'est pas respectée pour le secteur {sector} à la date {date}"
                     )
-            elif verbose:
-                print(
-                    f"   [OK] La contrainte de poids sectorielle est respectée pour le secteur {sector} à la date {date}"
-                )
+
 
     return constraints_respected
+
+def check_weights_sum_to_one(weights: pd.DataFrame, tolerance: float = 1e-6) -> bool:
+    """
+    Vérifie que les poids somment à 1 à chaque date de rééquilibrage.
+
+    Parameters
+    ----------
+    weights : pd.DataFrame
+        DataFrame contenant les poids associés à chaque action pour chaque date de rééquilibrage.
+    tolerance : float, optional
+        Tolérance pour les erreurs numériques, par défaut 1e-6.
+
+    Returns
+    -------
+    bool
+        Retourne True si les poids somment à 1 pour chaque date de rééquilibrage, sinon False.
+    """
+    def is_close_to_one(x: pd.Series) -> ndarray | Iterable | int | float:
+        return np.isclose(x.sum(), 1, rtol=tolerance, atol=tolerance)
+
+    result = weights.apply(is_close_to_one, axis=1)
+    return result.all()
 
 
 if __name__ == "__main__":
@@ -239,23 +316,28 @@ if __name__ == "__main__":
     max_weight = 0.05
     sector_max_weight = 0.4
     # Charger les données
-    df_filtered = pd.read_parquet("converted_data/filtered_data.parquet")
+    df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
     df_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
 
     print("Calcul des poids de l'investissement...")
 
-    rebalance_dates = get_rebalance_dates(df_filtered)
-    weights = inverse_volatility_strategy(df_prices=df_filtered,
+    rebalance_dates = get_rebalance_dates(df_total_ret_filtered)
+    weights = inverse_volatility_strategy(df_prices=df_total_ret_filtered,
                                           rebalance_dates=rebalance_dates,
+                                          gics_sectors=df_sectors,
                                           min_weight=min_weight,
                                           max_weight=max_weight,
                                           sector_max_weight=sector_max_weight)
+    print(weights)
+
+    # save weights to parquet in converted_data folder
+    weights.to_parquet("results_data/base_strategy_weights.parquet")
 
 
     are_weight_constraints_respected = check_weight_constraints(weights=weights,
                                                                 min_weight=min_weight,
                                                                 max_weight=max_weight,
-                                                                verbose=False)
+                                                                verbose=True)
     if are_weight_constraints_respected:
         print("\nToutes les contraintes de poids individuelles sont respectées.")
     else:
@@ -271,3 +353,11 @@ if __name__ == "__main__":
         print("\nToutes les contraintes sectorielles sont respectées.")
     else:
         print("\nDes erreurs ont été trouvées dans les contraintes sectorielles.")
+
+    is_valid = check_weights_sum_to_one(weights)
+
+    if is_valid:
+        print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
+    else:
+        print(
+            "\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")

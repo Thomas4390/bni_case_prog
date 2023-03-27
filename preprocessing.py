@@ -8,13 +8,43 @@ import pandas as pd
 
 
 def xlsx_to_parquet(xlsx_file: str, parquet_file: str) -> None:
+    """
+    Convertit un fichier Excel en fichier Parquet.
+
+    Parameters
+    ----------
+    xlsx_file : str
+        Chemin du fichier Excel à convertir.
+    parquet_file : str
+        Chemin du fichier Parquet de sortie.
+
+    Returns
+    -------
+    None
+    """
     df = pd.read_excel(xlsx_file)
     df.to_parquet(parquet_file)
+
+    return None
 
 
 def convert_xlsx_files_to_parquet(
     file_list: List[str], output_folder: str = "data"
 ) -> None:
+    """
+    Convertit une liste de fichiers Excel en fichiers Parquet.
+
+    Parameters
+    ----------
+    file_list : List[str]
+        Liste des fichiers Excel à convertir.
+    output_folder : str, optional
+        Chemin du dossier de sortie pour les fichiers Parquet, par défaut "data".
+
+    Returns
+    -------
+    None
+    """
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -24,8 +54,24 @@ def convert_xlsx_files_to_parquet(
         xlsx_to_parquet(xlsx_file, parquet_file)
         print(f"Converted {xlsx_file} to {parquet_file}")
 
+    return None
+
+
 
 def get_xlsx_files_in_folder(folder: str) -> List[str]:
+    """
+    Retourne une liste contenant tous les fichiers Excel (.xlsx) dans le dossier spécifié.
+
+    Parameters
+    ----------
+    folder : str
+        Le chemin du dossier.
+
+    Returns
+    -------
+    List[str]
+        Une liste contenant tous les fichiers Excel (.xlsx) dans le dossier spécifié.
+    """
     return [
         os.path.join(folder, file)
         for file in os.listdir(folder)
@@ -33,7 +79,22 @@ def get_xlsx_files_in_folder(folder: str) -> List[str]:
     ]
 
 
-def convert_dates(df: pd.DataFrame, date_column: str = "Index Date"):
+def convert_dates(df: pd.DataFrame, date_column: str = "Index Date") -> pd.DataFrame:
+    """
+    Convertit la colonne des dates dans le format souhaité.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Le DataFrame contenant la colonne des dates.
+    date_column : str, optional
+        Le nom de la colonne des dates, par défaut "Index Date".
+
+    Returns
+    -------
+    pd.DataFrame
+        Le DataFrame avec la colonne des dates dans le format souhaité.
+    """
     # Convertir les dates en chaînes de caractères
     df[date_column] = df[date_column].astype(str)
     # Convertir les chaînes de caractères en objets datetime avec le format souhaité
@@ -44,7 +105,16 @@ def convert_dates(df: pd.DataFrame, date_column: str = "Index Date"):
     return df
 
 
+
 def read_reference_index_holdings() -> pd.DataFrame:
+    """
+    Charge le fichier de données des pondérations des titres dans l'indice de référence.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame contenant les pondérations des titres dans l'indice de référence.
+    """
     df = pd.read_parquet("converted_data/Reference Index Holdings.parquet")
     # Convert the dates to the desired format
     df = convert_dates(df)
@@ -58,11 +128,34 @@ def read_reference_index_holdings() -> pd.DataFrame:
 
 
 def read_gics_sectors() -> pd.DataFrame:
+    """
+    Charge le fichier de données de classification GICS des titres.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame contenant la classification GICS des titres.
+    """
     df = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
     return df
 
 
+
 def read_data(file_name: str) -> pd.DataFrame:
+    """
+    Lit un fichier de données en format parquet et le transforme en un DataFrame. La première colonne du DataFrame doit
+    contenir des dates et est renommée en "Index Date" avant d'être définie comme index du DataFrame.
+
+    Parameters
+    ----------
+    file_name : str
+        Le nom du fichier de données à lire.
+
+    Returns
+    -------
+    pd.DataFrame
+        Le DataFrame correspondant aux données lues.
+    """
     # read data in converted_data folder
     df = pd.read_parquet(f"converted_data/{file_name}.parquet")
     # convert the first column to datetime object
@@ -74,6 +167,7 @@ def read_data(file_name: str) -> pd.DataFrame:
     df.sort_index(inplace=True)
 
     return df
+
 
 
 if "__main__" == __name__:
