@@ -45,7 +45,6 @@ def convert_dates(df: pd.DataFrame, date_column: str = "Index Date"):
 
 
 def read_reference_index_holdings() -> pd.DataFrame:
-    # Read the reference index holdings in excel file and start from second row
     df = pd.read_parquet("converted_data/Reference Index Holdings.parquet")
     # Convert the dates to the desired format
     df = convert_dates(df)
@@ -60,7 +59,6 @@ def read_reference_index_holdings() -> pd.DataFrame:
 
 def read_gics_sectors() -> pd.DataFrame:
     df = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
-
     return df
 
 
