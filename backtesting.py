@@ -2,9 +2,11 @@ import pandas as pd
 import numpy as np
 from preprocessing import read_data
 
+
 def get_rebalance_dates(weights: pd.DataFrame) -> pd.DatetimeIndex:
     """Retourne les dates de rééquilibrage à partir d'un DataFrame de poids."""
     return weights.index
+
 
 def compute_daily_portfolio_returns(prices: pd.DataFrame,
                                       weights: pd.DataFrame) -> pd.Series:
@@ -25,7 +27,9 @@ def compute_daily_portfolio_returns(prices: pd.DataFrame,
     pd.Series
         Série contenant les rendements quotidiens du portefeuille.
     """
+    # Calcule les rendements quotidiens
     daily_returns = prices.pct_change()
+    # Ne garder que les rendements à partir de la première date de rééquilibrage
     daily_returns = daily_returns.loc[get_rebalance_dates(weights)[0]:]
 
     # Remplir les poids pour chaque jour de trading
@@ -51,6 +55,7 @@ def compute_cumulative_returns(returns: pd.Series) -> pd.Series:
     pd.Series
         Série contenant les rendements cumulés pour chaque période.
     """
+    # Calcule les rendements cumulés
     cumulative_returns = (1 + returns).cumprod() - 1
     return cumulative_returns
 
@@ -72,16 +77,21 @@ def compute_benchmark_returns(benchmark: pd.Series, weights: pd.DataFrame) -> pd
         Série contenant la série de rendements du benchmark à partir de la première date de rééquilibrage.
     """
 
+    # Récupérer la première date de rééquilibrage
     rebalance_dates = get_rebalance_dates(weights)
     first_rebalance_date = rebalance_dates[0]
 
+    # Convertir l'index en DatetimeIndex s'il ne l'est pas déjà
     if not isinstance(benchmark.index, pd.DatetimeIndex):
         benchmark.index = pd.to_datetime(benchmark.index)
 
+    # Convertir la date de rééquilibrage en Timestamp s'il ne l'est pas déjà
     if not isinstance(first_rebalance_date, pd.Timestamp):
         first_rebalance_date = pd.Timestamp(first_rebalance_date)
 
+    # Calculer les rendements quotidiens du benchmark
     benchmark_returns = benchmark.pct_change().dropna()
+    # Ne garder que les rendements à partir de la première date de rééquilibrage
     benchmark_returns = benchmark_returns.loc[first_rebalance_date:]
 
     return benchmark_returns
