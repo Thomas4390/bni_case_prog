@@ -1,7 +1,6 @@
 import pandas as pd
 from datetime import timedelta
 from preprocessing import read_data
-
 import numpy as np
 
 
@@ -83,12 +82,6 @@ def filter_top_quantile(
 
     return df_filtered
 
-
-import pandas as pd
-import numpy as np
-
-import pandas as pd
-import numpy as np
 
 
 def apply_nan_mask(df_source: pd.DataFrame,
