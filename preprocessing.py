@@ -180,6 +180,45 @@ def read_data(file_name: str) -> pd.DataFrame:
     return df
 
 
+import os
+
+
+def move_file_to_directory(file_path: str, dest_directory: str) -> None:
+    """
+    Move a file to a specified destination directory.
+
+    Parameters
+    ----------
+    file_path : str
+        The path to the file to be moved.
+    dest_directory : str
+        The path to the directory where the file should be moved.
+
+    Raises
+    ------
+    ValueError
+        If either `file_path` or `dest_directory` is not a valid directory path.
+    OSError
+        If an error occurs while moving the file.
+    """
+    # Check if the destination directory exists, and create it if it doesn't
+    if not os.path.isdir(dest_directory):
+        raise ValueError(f"{dest_directory} is not a valid directory path.")
+
+    # Get the base name of the file
+    file_name = os.path.basename(file_path)
+
+    # Create the destination path by joining the destination directory and the file name
+    dest_path = os.path.join(dest_directory, file_name)
+
+    try:
+        # Move the file to the destination directory
+        os.replace(file_path, dest_path)
+        print(f"File '{file_name}' moved to '{dest_directory}' successfully!")
+    except OSError as e:
+        print(f"An error occurred while moving the file: {e}")
+        raise e
+
 
 if "__main__" == __name__:
 

@@ -1,9 +1,7 @@
 from typing import Iterable
-
 import numpy as np
 import pandas as pd
 from numpy import ndarray
-
 from filter import get_rebalance_dates
 
 
@@ -242,7 +240,8 @@ def calculate_sector_weights(weights: pd.DataFrame, df_sectors: pd.DataFrame) ->
     Returns
     -------
     pd.DataFrame
-        DataFrame contenant les pondérations sectorielles pour chaque secteur GICS et chaque date de rééquilibrage.
+        DataFrame contenant les pondérations sectorielles pour chaque secteur
+        GICS et chaque date de rééquilibrage.
     """
     rebalance_dates = weights.index
     sector_weights_dict = {}
@@ -356,10 +355,11 @@ if __name__ == "__main__":
     print(weights)
 
     sector_weights = calculate_sector_weights(weights=weights, df_sectors=df_sectors)
-    print(sector_weights.iloc[0].sum())
+    print(sector_weights)
     print(sector_weights.max(axis=0))
     # save weights to parquet in converted_data folder
     weights.to_parquet("results_data/base_strategy_weights.parquet")
+    sector_weights.to_parquet("results_data/base_strategy_sector_weights.parquet")
 
 
     are_weight_constraints_respected = check_weight_constraints(weights=weights,
