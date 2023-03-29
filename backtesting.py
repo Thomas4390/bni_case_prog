@@ -3,6 +3,7 @@ import numpy as np
 from preprocessing import read_data, move_file_to_directory
 import quantstats as qs
 import warnings
+
 # supress FutureWarnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -12,17 +13,20 @@ def get_rebalance_dates(weights: pd.DataFrame) -> pd.DatetimeIndex:
     return weights.index
 
 
-def calculate_daily_drifted_weights(weights: pd.DataFrame,
-                                    prices: pd.DataFrame) -> pd.DataFrame:
+def calculate_daily_drifted_weights(
+    weights: pd.DataFrame, prices: pd.DataFrame
+) -> pd.DataFrame:
     # Calcule les rendements quotidiens
     daily_returns = prices.pct_change()
 
-    # Initialise le DataFrame drifted_weights avec la même forme que daily_returns
-    drifted_weights = pd.DataFrame(index=daily_returns.index,
-                                   columns=weights.columns)
+    # Trouve la première date de rééquilibrage
+    first_rebalance_date = weights.index[0]
 
-    # Trouve la première date de rééquilibrage après la première date des prix
-    first_rebalance_date = weights.index[weights.index >= prices.index[0]][0]
+    #  Sélectionne les rendements quotidiens à partir de la première date de rééquilibrage
+    daily_returns = daily_returns.loc[first_rebalance_date:]
+
+    # Initialise le DataFrame drifted_weights avec la même forme que daily_returns
+    drifted_weights = pd.DataFrame(index=daily_returns.index, columns=weights.columns)
 
     # Initialise les poids du portefeuille avec les poids de la première date de rééquilibrage
     current_weights = weights.loc[first_rebalance_date]
@@ -48,9 +52,9 @@ def calculate_daily_drifted_weights(weights: pd.DataFrame,
     return drifted_weights
 
 
-
-def compute_daily_portfolio_returns(prices: pd.DataFrame,
-                                      weights: pd.DataFrame) -> pd.Series:
+def compute_daily_portfolio_returns(
+    prices: pd.DataFrame, weights: pd.DataFrame
+) -> pd.Series:
     """
     Calcule les rendements quotidiens du portefeuille en utilisant les prix et les poids.
 
@@ -71,10 +75,10 @@ def compute_daily_portfolio_returns(prices: pd.DataFrame,
     # Calcule les rendements quotidiens
     daily_returns = prices.pct_change()
     # Ne garder que les rendements à partir de la première date de rééquilibrage
-    daily_returns = daily_returns.loc[get_rebalance_dates(weights)[0]:]
+    daily_returns = daily_returns.loc[get_rebalance_dates(weights)[0] :]
 
-    # Remplir les poids pour chaque jour de trading
-    daily_weights = weights.reindex(daily_returns.index, method="ffill")
+    # Remplir les poids pour chaque jour de trading avec les daily drifted weights
+    daily_weights = calculate_daily_drifted_weights(weights, prices)
 
     # Calculer les rendements quotidiens du portefeuille
     portfolio_daily_returns = (daily_weights * daily_returns).sum(axis=1)
@@ -119,7 +123,6 @@ def compute_benchmark_returns(benchmark: pd.Series, weights: pd.DataFrame) -> pd
     return benchmark_returns
 
 
-
 if __name__ == "__main__":
     # Lecture des données
     df_total_ret = pd.read_parquet("filtered_data/total_ret_data.parquet")
@@ -128,34 +131,28 @@ if __name__ == "__main__":
     benchmark_prices = read_data("Constituents TOT_RET_INDEX data").iloc[:, -1]
 
     # Calcul des rendements quotidiens du portefeuille
-    portfolio_daily_returns = compute_daily_portfolio_returns(df_total_ret,
-                                                              df_weights)
+    portfolio_daily_returns = compute_daily_portfolio_returns(df_total_ret, df_weights)
 
-    benchmark_daily_returns = compute_benchmark_returns(benchmark_prices,
-                                                        weights=df_weights)
+    benchmark_daily_returns = compute_benchmark_returns(
+        benchmark_prices, weights=df_weights
+    )
 
-    portfolio_daily_returns2 = calculate_daily_drifted_weights(df_weights, df_total_ret)
+    print(portfolio_daily_returns.tail())
 
-    print(portfolio_daily_returns2.iloc[251:252])
-    print(portfolio_daily_returns2.iloc[251*2:252*2])
-    print(portfolio_daily_returns2.iloc[251*3:252*3])
-    print(portfolio_daily_returns2.iloc[251*4:252*4])
+    # Calcul des métriques de performance en utilisant le package quantstats
+    qs.extend_pandas()
+    # output sous la forme d'un fichier html à ouvrir sur un web browser
+    print("Début de la génération du rapport de backtesting...")
+    backtesting_metrics = qs.reports.html(
+        portfolio_daily_returns,
+        benchmark_daily_returns,
+        rf=0.01,
+        mode="full",
+        title="Backtesting Base Strategy",
+        output=True,
+        download_filename="base_strategy_metrics.html",
+        match_dates=True,
+    )
+    print("Rapport de backtesting généré avec succès!")
 
-    # # Calcul des métriques de performance en utilisant le package quantstats
-    # qs.extend_pandas()
-    # # output sous la forme d'un fichier html à ouvrir sur un web browser
-    # print("Début de la génération du rapport de backtesting...")
-    # backtesting_metrics = qs.reports.html(portfolio_daily_returns,
-    #                                       benchmark_daily_returns,
-    #                                       rf=0.01,
-    #                                       mode="full",
-    #                                       title="Backtesting Base Strategy",
-    #                                       output=True,
-    #                                       download_filename="base_strategy_metrics.html",
-    #                                       match_dates=True)
-    # print("Rapport de backtesting généré avec succès!")
-    #
-    # move_file_to_directory("base_strategy_metrics.html", "results_data")
-
-
-
+    move_file_to_directory("base_strategy_metrics.html", "results_data")

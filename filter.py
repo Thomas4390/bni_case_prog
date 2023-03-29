@@ -83,9 +83,7 @@ def filter_top_quantile(
     return df_filtered
 
 
-
-def apply_nan_mask(df_source: pd.DataFrame,
-                   df_target: pd.DataFrame) -> pd.DataFrame:
+def apply_nan_mask(df_source: pd.DataFrame, df_target: pd.DataFrame) -> pd.DataFrame:
     """
     Applique le masque des valeurs NaN d'un DataFrame source sur un DataFrame cible.
     Il est possible que le DataFrame cible ait plus de NaN values que le DataFrame source.
@@ -112,7 +110,8 @@ def apply_nan_mask(df_source: pd.DataFrame,
 
     # Appliquer le masque NaN sur le DataFrame cible
     df_target_masked = df_target.loc[common_dates, common_columns].where(
-        ~nan_mask, np.nan)
+        ~nan_mask, np.nan
+    )
 
     return df_target_masked
 
@@ -127,12 +126,14 @@ if "__main__" == __name__:
     rebalance_dates = get_rebalance_dates(df_volume)
 
     df_volume_filtered = filter_top_quantile(
-        df_volume=df_volume, rebalance_dates=rebalance_dates, quantile=0.2)
+        df_volume=df_volume, rebalance_dates=rebalance_dates, quantile=0.2
+    )
 
     df_px_filtered = apply_nan_mask(df_source=df_volume_filtered, df_target=df_px)
 
     df_total_ret_filtered = apply_nan_mask(
-        df_source=df_volume_filtered, df_target=df_total_ret)
+        df_source=df_volume_filtered, df_target=df_total_ret
+    )
 
     # save all dataframe to parquet in the filtered_data folder
     df_volume_filtered.to_parquet("filtered_data/volume_data.parquet")

@@ -58,7 +58,6 @@ def convert_xlsx_files_to_parquet(
     return None
 
 
-
 def get_xlsx_files_in_folder(folder: str) -> List[str]:
     """
     Retourne une liste contenant tous les fichiers Excel (.xlsx) dans le dossier spécifié.
@@ -106,7 +105,6 @@ def convert_dates(df: pd.DataFrame, date_column: str = "Index Date") -> pd.DataF
     return df
 
 
-
 def read_reference_index_holdings() -> pd.DataFrame:
     """
     Charge le fichier de données des pondérations des titres dans l'indice de référence.
@@ -126,6 +124,7 @@ def read_reference_index_holdings() -> pd.DataFrame:
     # Sort the index
     df.sort_index(inplace=True)
     return df
+
 
 def imput_missing_values_gics_sectors(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -221,7 +220,6 @@ def move_file_to_directory(file_path: str, dest_directory: str) -> None:
 
 
 if "__main__" == __name__:
-
     # Convertit les fichiers Excel en fichiers Parquet.
     # Fonctionne seulement si aucun Excel n'est ouvert en simultané.
     convert_xlsx_files_to_parquet(get_xlsx_files_in_folder("data"))
