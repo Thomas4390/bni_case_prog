@@ -12,6 +12,43 @@ def get_rebalance_dates(weights: pd.DataFrame) -> pd.DatetimeIndex:
     return weights.index
 
 
+def calculate_daily_drifted_weights(weights: pd.DataFrame,
+                                    prices: pd.DataFrame) -> pd.DataFrame:
+    # Calcule les rendements quotidiens
+    daily_returns = prices.pct_change()
+
+    # Initialise le DataFrame drifted_weights avec la même forme que daily_returns
+    drifted_weights = pd.DataFrame(index=daily_returns.index,
+                                   columns=weights.columns)
+
+    # Trouve la première date de rééquilibrage après la première date des prix
+    first_rebalance_date = weights.index[weights.index >= prices.index[0]][0]
+
+    # Initialise les poids du portefeuille avec les poids de la première date de rééquilibrage
+    current_weights = weights.loc[first_rebalance_date]
+
+    # Remplit les valeurs initiales de drifted_weights avec les poids du premier jour
+    drifted_weights.loc[first_rebalance_date] = current_weights
+
+    # Calcule les poids quotidiens ajustés pour chaque jour et chaque actif
+    for i in range(1, len(daily_returns)):
+        # Si la date courante est une date de rééquilibrage
+        if daily_returns.index[i] in weights.index:
+            # Mettre à jour les poids du portefeuille avec les poids de rééquilibrage correspondants
+            current_weights = weights.loc[daily_returns.index[i]]
+
+        # Sinon, calculer les poids ajustés à partir des poids courants et des rendements quotidiens
+        else:
+            daily_change = current_weights * (1 + daily_returns.iloc[i])
+            current_weights = daily_change / daily_change.sum()
+
+        # Ajouter les poids courants à drifted_weights
+        drifted_weights.iloc[i] = current_weights
+
+    return drifted_weights
+
+
+
 def compute_daily_portfolio_returns(prices: pd.DataFrame,
                                       weights: pd.DataFrame) -> pd.Series:
     """
@@ -87,6 +124,7 @@ if __name__ == "__main__":
     # Lecture des données
     df_total_ret = pd.read_parquet("filtered_data/total_ret_data.parquet")
     df_weights = pd.read_parquet("results_data/base_strategy_weights.parquet")
+    print(df_weights.head())
     benchmark_prices = read_data("Constituents TOT_RET_INDEX data").iloc[:, -1]
 
     # Calcul des rendements quotidiens du portefeuille
@@ -96,21 +134,28 @@ if __name__ == "__main__":
     benchmark_daily_returns = compute_benchmark_returns(benchmark_prices,
                                                         weights=df_weights)
 
-    # Calcul des métriques de performance en utilisant le package quantstats
-    qs.extend_pandas()
-    # output sous la forme d'un fichier html à ouvrir sur un web browser
-    print("Début de la génération du rapport de backtesting...")
-    backtesting_metrics = qs.reports.html(portfolio_daily_returns,
-                                          benchmark_daily_returns,
-                                          rf=0.01,
-                                          mode="full",
-                                          title="Backtesting Base Strategy",
-                                          output=True,
-                                          download_filename="base_strategy_metrics.html",
-                                          match_dates=True)
-    print("Rapport de backtesting généré avec succès!")
+    portfolio_daily_returns2 = calculate_daily_drifted_weights(df_weights, df_total_ret)
 
-    move_file_to_directory("base_strategy_metrics.html", "results_data")
+    print(portfolio_daily_returns2.iloc[251:252])
+    print(portfolio_daily_returns2.iloc[251*2:252*2])
+    print(portfolio_daily_returns2.iloc[251*3:252*3])
+    print(portfolio_daily_returns2.iloc[251*4:252*4])
+
+    # # Calcul des métriques de performance en utilisant le package quantstats
+    # qs.extend_pandas()
+    # # output sous la forme d'un fichier html à ouvrir sur un web browser
+    # print("Début de la génération du rapport de backtesting...")
+    # backtesting_metrics = qs.reports.html(portfolio_daily_returns,
+    #                                       benchmark_daily_returns,
+    #                                       rf=0.01,
+    #                                       mode="full",
+    #                                       title="Backtesting Base Strategy",
+    #                                       output=True,
+    #                                       download_filename="base_strategy_metrics.html",
+    #                                       match_dates=True)
+    # print("Rapport de backtesting généré avec succès!")
+    #
+    # move_file_to_directory("base_strategy_metrics.html", "results_data")
 
 
 
