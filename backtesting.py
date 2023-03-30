@@ -1,9 +1,7 @@
 import pandas as pd
-import numpy as np
 from preprocessing import read_data, move_file_to_directory
 import quantstats as qs
 import warnings
-
 # supress FutureWarnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -126,25 +124,28 @@ def compute_benchmark_returns(benchmark: pd.Series, weights: pd.DataFrame) -> pd
 if __name__ == "__main__":
     # Lecture des données
     df_total_ret = pd.read_parquet("filtered_data/total_ret_data.parquet")
-    df_weights = pd.read_parquet("results_data/base_strategy_weights.parquet")
-    print(df_weights.head())
+    df_weights_bs = pd.read_parquet("results_data/base_strategy_weights.parquet")
+    df_weights_ns = pd.read_parquet("results_data/new_strategy_weights.parquet")
+
     benchmark_prices = read_data("Constituents TOT_RET_INDEX data").iloc[:, -1]
 
     # Calcul des rendements quotidiens du portefeuille
-    portfolio_daily_returns = compute_daily_portfolio_returns(df_total_ret, df_weights)
+    portfolio_daily_returns_bs = compute_daily_portfolio_returns(df_total_ret, df_weights_bs)
+    portfolio_daily_returns_ns = compute_daily_portfolio_returns(df_total_ret, df_weights_ns)
 
     benchmark_daily_returns = compute_benchmark_returns(
-        benchmark_prices, weights=df_weights
+        benchmark_prices, weights=df_weights_bs
     )
 
-    print(portfolio_daily_returns.tail())
+    print(portfolio_daily_returns_bs.tail())
 
     # Calcul des métriques de performance en utilisant le package quantstats
     qs.extend_pandas()
     # output sous la forme d'un fichier html à ouvrir sur un web browser
     print("Début de la génération du rapport de backtesting...")
-    backtesting_metrics = qs.reports.html(
-        portfolio_daily_returns,
+
+    backtesting_metrics_bs = qs.reports.html(
+        portfolio_daily_returns_bs,
         benchmark_daily_returns,
         rf=0.01,
         mode="full",
@@ -153,6 +154,19 @@ if __name__ == "__main__":
         download_filename="base_strategy_metrics.html",
         match_dates=True,
     )
+
+    backtesting_metrics_ns = qs.reports.html(
+        portfolio_daily_returns_ns,
+        benchmark_daily_returns,
+        rf=0.01,
+        mode="full",
+        title="Backtesting New Strategy",
+        output=True,
+        download_filename="new_strategy_metrics.html",
+        match_dates=True,
+    )
+
     print("Rapport de backtesting généré avec succès!")
 
     move_file_to_directory("base_strategy_metrics.html", "results_data")
+    move_file_to_directory("new_strategy_metrics.html", "results_data")

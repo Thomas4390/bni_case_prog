@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from numpy import ndarray
+
 from filter import get_rebalance_dates
 from base_strategy import (
     inverse_volatility_strategy,
@@ -14,6 +16,9 @@ from base_strategy import (
     check_weight_constraints,
     check_weights_sum_to_one,
 )
+from statsmodels.tsa.regime_switching.markov_autoregression import MarkovAutoregression
+import ruptures as rpt
+import matplotlib.pyplot as plt
 
 
 def inverse_volatility_and_skewness_strategy(
@@ -129,3 +134,7 @@ if __name__ == "__main__":
         print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
     else:
         print("\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")
+
+
+
+
