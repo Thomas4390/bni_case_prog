@@ -6,12 +6,48 @@ from numpy import ndarray
 from scipy.optimize import minimize
 from base_strategy import (
     calculate_sector_weights,
+    calculate_returns,
     check_sector_constraints,
     check_weights_sum_to_one,
 )
 from filter import get_rebalance_dates
 from concurrent.futures import ThreadPoolExecutor
 
+"""La stratégie présentée ici est basée sur la méthode de l'échantillonnage bootstrap 
+pour générer un portefeuille optimal. Cette méthode vise à minimiser la variance 
+du portefeuille sous contraintes sectorielles. Voici un aperçu du fonctionnement de cette stratégie:
+
+1. Pour chaque période de rééquilibrage :
+a. Extraire les rendements des actifs pour la période courante.
+b. Supprimer les colonnes contenant des NaN.
+c. Optimiser le portefeuille en utilisant la méthode de l'échantillonnage bootstrap.
+d. Réintégrer les colonnes supprimées avec des poids de 0.
+e. Ajouter les poids pour la période courante à la liste des poids de rééquilibrage.
+
+2. Convertir la liste des poids de rééquilibrage en DataFrame.
+La méthode de l'échantillonnage bootstrap est utilisée pour estimer la distribution 
+des rendements en générant des échantillons à partir des données historiques. 
+Cette approche permet de prendre en compte l'incertitude liée à l'estimation 
+des paramètres de la distribution.
+
+La fonction resampled_ef_portfolio effectue les étapes suivantes pour générer 
+un portefeuille optimal :
+
+1. Générer n_bootstrap échantillons bootstrap de la distribution des rendements 
+en utilisant une normale multivariée.
+Pour chaque échantillon bootstrap :
+a. Calculer la matrice de covariance des rendements de l'échantillon.
+b. Trouver les poids du portefeuille avec la variance minimale en utilisant la 
+matrice de covariance et les contraintes sectorielles.
+
+2. Moyenner les poids optimaux sur les échantillons bootstrap.
+
+En résumé, cette stratégie utilise la méthode de l'échantillonnage bootstrap 
+pour estimer la distribution des rendements et générer un portefeuille optimal 
+en minimisant la variance sous contraintes sectorielles. Le but est de construire 
+un portefeuille diversifié qui minimise le risque.
+
+Attention: cette stratégie prend beaucoup de temps à tourner."""
 
 def portfolio_variance(weights: np.ndarray, cov_matrix: np.ndarray) -> ndarray:
     """
@@ -60,10 +96,12 @@ def get_bootstrap_samples(returns: pd.DataFrame, n_samples: int = 252) -> np.nda
     return np.random.multivariate_normal(mean_returns, cov_matrix, n_samples)
 
 
-def min_variance_portfolio(cov_matrix: np.ndarray,
-                           gics_sectors: pd.DataFrame,
-                           sector_constraints: Tuple[float, float],
-                           period_returns_clean: pd.DataFrame) -> np.ndarray:
+def min_variance_portfolio(
+    cov_matrix: np.ndarray,
+    gics_sectors: pd.DataFrame,
+    sector_constraints: Tuple[float, float],
+    period_returns_clean: pd.DataFrame,
+) -> np.ndarray:
     """
     Trouve les poids du portefeuille avec la variance minimale sous contraintes.
 
@@ -103,34 +141,45 @@ def min_variance_portfolio(cov_matrix: np.ndarray,
     sector_constraint = []
     unique_sectors = gics_sectors["GICS Sector"].unique()
     for sector in unique_sectors:
-        sector_indices = (gics_sectors.loc[gics_sectors["GICS Sector"] == sector]
-                          .index.intersection(period_returns_clean.columns).tolist())
-        sector_constraint.append({
-            "type": "ineq",
-            "fun": lambda x, s=sector_indices: np.sum(x[s]) - sector_constraints[0],
-        })
-        sector_constraint.append({
-            "type": "ineq",
-            "fun": lambda x, s=sector_indices: sector_constraints[1] - np.sum(x[s]),
-        })
+        sector_indices = (
+            gics_sectors.loc[gics_sectors["GICS Sector"] == sector]
+            .index.intersection(period_returns_clean.columns)
+            .tolist()
+        )
+        sector_constraint.append(
+            {
+                "type": "ineq",
+                "fun": lambda x, s=sector_indices: np.sum(x[s]) - sector_constraints[0],
+            }
+        )
+        sector_constraint.append(
+            {
+                "type": "ineq",
+                "fun": lambda x, s=sector_indices: sector_constraints[1] - np.sum(x[s]),
+            }
+        )
 
     # Contraintes totales
     constraints = [total_weight_constraint] + sector_constraint
 
     # Minimiser la variance
-    result = minimize(portfolio_variance,
-                      initial_weights,
-                      args=(cov_matrix,),
-                      bounds=bounds,
-                      constraints=constraints)
+    result = minimize(
+        portfolio_variance,
+        initial_weights,
+        args=(cov_matrix,),
+        bounds=bounds,
+        constraints=constraints,
+    )
 
     return result.x
 
 
-def resampled_ef_portfolio(returns: pd.DataFrame,
-                            gics_sectors: pd.DataFrame,
-                            sector_constraints: Tuple[float, float],
-                            n_bootstrap: int = 3) -> np.ndarray:
+def resampled_ef_portfolio(
+    returns: pd.DataFrame,
+    gics_sectors: pd.DataFrame,
+    sector_constraints: Tuple[float, float],
+    n_bootstrap: int = 3,
+) -> np.ndarray:
     """
     Génère un portefeuille optimal en utilisant la méthode de l'échantillonnage bootstrap.
 
@@ -163,16 +212,17 @@ def resampled_ef_portfolio(returns: pd.DataFrame,
         bootstrap_cov_matrix = np.cov(bootstrap_returns.T)
 
         # Trouver les poids du portefeuille avec la variance minimale pour l'échantillon bootstrap
-        return min_variance_portfolio(bootstrap_cov_matrix,
-                                       gics_sectors,
-                                       sector_constraints,
-                                       returns)
+        return min_variance_portfolio(
+            bootstrap_cov_matrix, gics_sectors, sector_constraints, returns
+        )
 
     # Utiliser ThreadPoolExecutor pour exécuter plusieurs itérations bootstrap en parallèle
     with ThreadPoolExecutor() as executor:
-        optimal_weights_array = list(executor.map(single_bootstrap_iteration,
-                                                   range(n_bootstrap),
-                                                   [returns] * n_bootstrap))
+        optimal_weights_array = list(
+            executor.map(
+                single_bootstrap_iteration, range(n_bootstrap), [returns] * n_bootstrap
+            )
+        )
 
     # Moyenner les poids optimaux sur les itérations bootstrap
     optimal_weights = np.sum(optimal_weights_array, axis=0) / n_bootstrap
@@ -180,10 +230,12 @@ def resampled_ef_portfolio(returns: pd.DataFrame,
     return optimal_weights
 
 
-def resampled_ef_weights_by_rebalance_dates(returns: pd.DataFrame,
-                                             rebalance_dates: pd.DatetimeIndex,
-                                             gics_sectors: pd.DataFrame,
-                                             sector_constraints: Tuple[float, float]) -> pd.DataFrame:
+def resampled_ef_weights_by_rebalance_dates(
+    returns: pd.DataFrame,
+    rebalance_dates: pd.DatetimeIndex,
+    gics_sectors: pd.DataFrame,
+    sector_constraints: Tuple[float, float],
+) -> pd.DataFrame:
     """
     Calcule les poids du portefeuille optimal pour chaque période de
     rééquilibrage à l'aide de la méthode de l'échantillonnage bootstrap.
@@ -223,9 +275,9 @@ def resampled_ef_weights_by_rebalance_dates(returns: pd.DataFrame,
         period_returns_clean = period_returns.dropna(axis=1)
 
         # Optimiser le portefeuille avec les colonnes restantes
-        optimal_weights = resampled_ef_portfolio(period_returns_clean,
-                                                  gics_sectors,
-                                                  sector_constraints)
+        optimal_weights = resampled_ef_portfolio(
+            period_returns_clean, gics_sectors, sector_constraints
+        )
 
         # Réintégrer les colonnes supprimées avec des poids de 0
         full_weights = pd.Series(0, index=returns.columns)
@@ -236,9 +288,9 @@ def resampled_ef_weights_by_rebalance_dates(returns: pd.DataFrame,
         print(f"Optimal weights: {full_weights}")
 
     # Convertir la liste de poids en DataFrame
-    rebalance_weights_df = pd.DataFrame(rebalance_weights,
-                                         index=rebalance_dates[:-1],
-                                         columns=returns.columns)
+    rebalance_weights_df = pd.DataFrame(
+        rebalance_weights, index=rebalance_dates[:-1], columns=returns.columns
+    )
 
     return rebalance_weights_df
 
@@ -247,26 +299,23 @@ if __name__ == "__main__":
     # Paramètres
     sector_max_weight = 0.4
 
-
-    # df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
-    # rendements = calculate_returns(df_total_ret_filtered)
-    # rebalance_dates = get_rebalance_dates(rendements)
+    df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
+    rendements = calculate_returns(df_total_ret_filtered)
+    rebalance_dates = get_rebalance_dates(rendements)
     gics_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
-    #
-    # weights = resampled_ef_weights_by_rebalance_dates(
-    #     rendements,
-    #     gics_sectors=gics_sectors,
-    #     sector_constraints=(0.05, 0.4),
-    #     rebalance_dates=rebalance_dates,
-    # )
-    # weights.to_parquet("results_data/other_strategy_weights.parquet")
+
+    weights = resampled_ef_weights_by_rebalance_dates(
+        rendements,
+        gics_sectors=gics_sectors,
+        sector_constraints=(0.05, 0.4),
+        rebalance_dates=rebalance_dates,
+    )
+    weights.to_parquet("results_data/other_strategy_weights.parquet")
 
     weights = pd.read_parquet("results_data/other_strategy_weights.parquet")
     sector_weights = calculate_sector_weights(weights=weights, df_sectors=gics_sectors)
 
     sector_weights.to_parquet("results_data/other_strategy_sector_weights.parquet")
-
-
 
     are_sectors_constraints_respected = check_sector_constraints(
         weights=weights,
@@ -278,13 +327,11 @@ if __name__ == "__main__":
     if are_sectors_constraints_respected:
         print("\nToutes les contraintes sectorielles sont respectées.")
     else:
-        print(
-            "\nDes erreurs ont été trouvées dans les contraintes sectorielles.")
+        print("\nDes erreurs ont été trouvées dans les contraintes sectorielles.")
 
     sum_to_one = check_weights_sum_to_one(weights)
 
     if sum_to_one:
         print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
     else:
-        print(
-            "\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")
+        print("\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")

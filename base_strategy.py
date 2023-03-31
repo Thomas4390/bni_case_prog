@@ -4,6 +4,28 @@ import pandas as pd
 from numpy import ndarray
 from filter import get_rebalance_dates
 
+"""Cette stratégie d'investissement est basée sur l'inverse de la volatilité 
+des actifs du portefeuille. Elle vise à attribuer des poids aux actifs 
+en tenant compte de leur volatilité. Voici un aperçu du fonctionnement de la stratégie:
+
+1. Calculer les rendements quotidiens des actifs à partir des prix.
+
+2. Pour chaque date de rééquilibrage :
+a. Sélectionner les rendements de l'année écoulée jusqu'à la date de rééquilibrage.
+b. Calculer la volatilité annuelle de chaque actif.
+c. Calculer l'inverse de la volatilité et remplacer les valeurs infinies par NaN.
+d. Normaliser les valeurs de l'inverse de la volatilité (diviser chaque valeur par la somme de toutes les valeurs).
+e. Stocker les poids normalisés dans le DataFrame weights.
+
+3. Appliquer les contraintes de poids individuelles (min_weight, max_weight) et sectorielles (sector_max_weight) aux poids normalisés.
+
+4. Redistribuer les poids pour s'assurer que leur somme est égale à 1.
+
+5. Stocker les poids du portefeuille rééquilibré pour chaque date de rééquilibrage dans un DataFrame.
+
+La stratégie alloue des poids plus importants aux actifs ayant une faible volatilité. 
+L'objectif est de diversifier le portefeuille en tenant compte de la volatilité 
+des actifs, afin de minimiser les risques."""
 
 def calculate_returns(df_prices: pd.DataFrame) -> pd.DataFrame:
     """
@@ -47,6 +69,25 @@ def calculate_volatility(df_returns: pd.DataFrame, window: int) -> pd.DataFrame:
 def redistribute_weights(
     weights: pd.Series, min_weight: float, max_weight: float
 ) -> pd.Series:
+    """
+    Redistribue les poids excédentaires d'une série de poids en conservant
+    les poids restants entre `min_weight` et `max_weight`.
+
+    Parameters :
+    ------------
+    weights : pandas.Series
+        La série de poids à redistribuer.
+    min_weight : float
+        Le poids minimal autorisé pour chaque élément de la série de poids.
+    max_weight : float
+        Le poids maximal autorisé pour chaque élément de la série de poids.
+
+    Returns :
+    ---------
+    redistributed_weights : pandas.Series
+        La série de poids après redistribution.
+
+    """
     excess_weights = weights[weights > max_weight] - max_weight
     total_excess_weight = excess_weights.sum()
 
@@ -74,6 +115,32 @@ def apply_sector_constraints(
     max_weight: float,
     sector_max_weight: float,
 ) -> pd.Series:
+    """
+    Applique les contraintes de poids sectorielles et individuelles à une série de poids.
+
+    Parameters
+    ----------
+    weights : pandas Series
+        La série de poids à laquelle appliquer les contraintes.
+
+    gics_sectors : pandas DataFrame
+        DataFrame contenant les classifications sectorielles GICS des actifs.
+
+    min_weight : float
+        Le poids minimum autorisé pour chaque action.
+
+    max_weight : float
+        Le poids maximum autorisé pour chaque action.
+
+    sector_max_weight : float
+        Le poids maximum autorisé pour chaque secteur.
+
+    Returns
+    -------
+    pandas Series
+        La série de poids ajustée avec les contraintes de poids sectorielles et individuelles appliquées.
+
+    """
     # Appliquer les contraintes de poids individuelles aux actions de tous les secteurs
     weights = weights.clip(lower=min_weight, upper=max_weight)
 
@@ -377,11 +444,9 @@ if __name__ == "__main__":
         max_weight=max_weight,
         sector_max_weight=sector_max_weight,
     )
-    print(weights)
 
     sector_weights = calculate_sector_weights(weights=weights, df_sectors=df_sectors)
-    print(sector_weights)
-    print(sector_weights.max(axis=0))
+
     # save weights to parquet in converted_data folder
     weights.to_parquet("results_data/base_strategy_weights.parquet")
     sector_weights.to_parquet("results_data/base_strategy_sector_weights.parquet")

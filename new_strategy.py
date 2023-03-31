@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-from numpy import ndarray
-
 from filter import get_rebalance_dates
 from base_strategy import (
     calculate_returns,
@@ -14,9 +12,36 @@ from base_strategy import (
     check_weight_constraints,
     check_weights_sum_to_one,
 )
-from statsmodels.tsa.regime_switching.markov_autoregression import MarkovAutoregression
-import ruptures as rpt
-import matplotlib.pyplot as plt
+
+"""Cette stratégie d'investissement est basée sur l'inverse de la volatilité et 
+la skewness négative des actifs du portefeuille. Elle vise à attribuer des poids 
+aux actifs en tenant compte de ces deux mesures. Voici un aperçu du fonctionnement de la stratégie:
+
+1. Calculer les rendements quotidiens des actifs à partir des prix.
+
+2. Pour chaque date de rééquilibrage :
+a. Sélectionner les rendements de l'année écoulée jusqu'à la date de rééquilibrage.
+b. Calculer la volatilité annuelle de chaque actif.
+c. Calculer la skewness négative de chaque actif.
+d. Calculer l'inverse de la volatilité et normaliser les valeurs.
+e. Normaliser les valeurs de skewness négative.
+f. Créer une combinaison pondérée de l'inverse de la volatilité et de la skewness négative en utilisant les poids vol_weight et skew_weight.
+
+3. Appliquer les contraintes de poids individuelles (min_weight, max_weight) et sectorielles (sector_max_weight) aux poids combinés.
+
+4. Redistribuer les poids pour s'assurer que leur somme est égale à 1.
+
+5. Stocker les poids du portefeuille rééquilibré pour chaque date de rééquilibrage dans un DataFrame.
+
+La stratégie alloue des poids plus importants aux actifs ayant une faible volatilité 
+et une skewness négative importante. L'objectif est de diversifier le portefeuille en 
+tenant compte de ces deux caractéristiques, afin de minimiser les risques et de 
+potentiellement améliorer les rendements.
+
+Le paramètre vol_weight détermine l'importance de l'inverse de la volatilité dans la combinaison pondérée, 
+tandis que le paramètre skew_weight détermine l'importance de la skewness négative. 
+En ajustant ces paramètres, vous pouvez modifier la manière dont la stratégie 
+attribue des poids aux actifs en fonction de leur volatilité et de leur skewness."""
 
 
 def inverse_volatility_and_skewness_strategy(
@@ -141,12 +166,10 @@ if __name__ == "__main__":
     )
 
     sector_weights = calculate_sector_weights(weights=weights, df_sectors=gics_sectors)
-    print(sector_weights)
-    print(sector_weights.max(axis=0))
+
     # save weights to parquet in converted_data folder
     weights.to_parquet("results_data/new_strategy_weights.parquet")
     sector_weights.to_parquet("results_data/new_strategy_sector_weights.parquet")
-    print(weights.iloc[:10, :10])
 
     are_weight_constraints_respected = check_weight_constraints(
         weights=weights,

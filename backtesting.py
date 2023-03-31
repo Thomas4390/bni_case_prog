@@ -161,6 +161,15 @@ if __name__ == "__main__":
         df_total_ret, df_weights_os
     )
 
+    daily_drifted_weights_bs = calculate_daily_drifted_weights(df_weights_bs, df_total_ret)
+    daily_drifted_weights_ns = calculate_daily_drifted_weights(df_weights_ns, df_total_ret)
+    daily_drifted_weights_os = calculate_daily_drifted_weights(df_weights_os, df_total_ret)
+
+    # sauvegarde des daily drifted weights dans results data
+    daily_drifted_weights_bs.to_parquet("results_data/base_strategy_ddw.parquet")
+    daily_drifted_weights_ns.to_parquet("results_data/new_strategy_ddw.parquet")
+    daily_drifted_weights_os.to_parquet("results_data/other_strategy_ddw.parquet")
+
     benchmark_daily_returns = compute_benchmark_returns(
         benchmark_prices, weights=df_weights_bs
     )
