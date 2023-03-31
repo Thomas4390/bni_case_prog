@@ -1,6 +1,6 @@
 # Cas de programmation | BNI
 
-*disclaimer* : Au cours de ce projet et de l'implémentation des différentes stratégies, j'ai fait de mon mieux afin de minimiser les erreurs de backtestings courantes dans le temps qui m'étais imparti. La principale erreur que l'on peut commetre en backtesting est d'utiliser des données futures pour prédire le passé. Avec du temps supplémentaire, j'aurais pu tester plus rigoureusement chacune des fonctions avant de passer à la suite du projet et ainsi être certain d'éviter ce genre d'erreur. Les résultats sont donc à prendre avec précaution. 
+*disclaimer* : Au cours du projet et de l'implémentation des différentes stratégies, j'ai fait de mon mieux afin de minimiser les erreurs de backtestings courantes dans le temps qui m'étais imparti. La principale erreur que l'on peut commetre en backtesting est d'utiliser des données futures pour prédire le passé. Avec du temps supplémentaire, j'aurais pu tester plus rigoureusement chacune des fonctions avant de passer à la suite du projet et ainsi être certain d'éviter ce genre d'erreur. Les résultats sont donc à prendre avec précaution. 
 
 # Description de la structure du projet : 
 
