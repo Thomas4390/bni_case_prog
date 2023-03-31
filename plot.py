@@ -41,8 +41,17 @@ def plot_sector_weights(weights: pd.DataFrame, strategy_name: str) -> None:
 
 if __name__ == "__main__":
     # Lecture des données
-    df_weights_sectors = pd.read_parquet(
+    df_weights_sectors_bs = pd.read_parquet(
         "results_data/base_strategy_sector_weights.parquet"
     )
-    print(df_weights_sectors.iloc[:5, :5])
-    plot_sector_weights(df_weights_sectors, strategy_name="base_strategy")
+    df_weights_sectors_ns = pd.read_parquet(
+        "results_data/new_strategy_sector_weights.parquet"
+    )
+    df_weights_sectors_os = pd.read_parquet(
+        "results_data/other_strategy_sector_weights.parquet"
+    )
+
+    # Afficher les poids des secteurs
+    plot_sector_weights(df_weights_sectors_bs, strategy_name="base_strategy")
+    plot_sector_weights(df_weights_sectors_ns, strategy_name="new_strategy")
+    plot_sector_weights(df_weights_sectors_os, strategy_name="other_strategy")

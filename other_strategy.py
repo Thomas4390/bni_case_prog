@@ -1,273 +1,290 @@
+from typing import Tuple
+
 import pandas as pd
 import numpy as np
+from numpy import ndarray
 from scipy.optimize import minimize
-from base_strategy import calculate_returns, get_rebalance_dates, calculate_sector_weights
+from base_strategy import (
+    calculate_sector_weights,
+    check_sector_constraints,
+    check_weights_sum_to_one,
+)
+from filter import get_rebalance_dates
+from concurrent.futures import ThreadPoolExecutor
 
 
-def create_factor_matrix(gics_sectors: pd.DataFrame) -> pd.DataFrame:
+def portfolio_variance(weights: np.ndarray, cov_matrix: np.ndarray) -> ndarray:
     """
-    Crée une matrice de facteurs à partir des secteurs GICS.
+    Calcule la variance d'un portefeuille à partir des poids et de la matrice de covariance.
 
     Parameters
     ----------
-    gics_sectors : pandas.DataFrame
-        Un DataFrame contenant les secteurs GICS pour chaque actif.
+    weights : numpy ndarray
+        Vecteur de poids du portefeuille.
+
+    cov_matrix : numpy ndarray
+        Matrice de covariance des rendements.
 
     Returns
     -------
-    pandas.DataFrame
-        Une matrice de facteurs pour chaque actif, où chaque colonne représente un secteur GICS.
-    """
-    # Convertit les secteurs GICS en dummies pour créer une matrice de facteurs
-    return pd.get_dummies(gics_sectors.set_index('Ticker')['GICS Sector'])
-
-
-def calculate_factor_returns(rendements: pd.DataFrame, factor_matrix: pd.DataFrame) -> pd.Series:
-    """
-    Calcule les rendements des facteurs à partir des rendements des actifs et de la matrice de facteurs.
-
-    Parameters
-    ----------
-    rendements : pandas.DataFrame
-        Un DataFrame contenant les rendements pour chaque actif.
-    factor_matrix : pandas.DataFrame
-        Une matrice de facteurs pour chaque actif.
-
-    Returns
-    -------
-    pandas.Series
-        Une série contenant les rendements des facteurs pour chaque date.
-    """
-    # Multiplie les rendements des actifs par la matrice de facteurs et divise par la somme des facteurs pour chaque date
-    return rendements.dot(factor_matrix).div(factor_matrix.sum())
-
-
-def calculate_asset_covariance(factor_returns: pd.Series, factor_matrix: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcule la matrice de covariance des actifs à partir des rendements des facteurs et de la matrice de facteurs.
-
-    Parameters
-    ----------
-    factor_returns : pandas.Series
-        Une série contenant les rendements des facteurs pour chaque date.
-    factor_matrix : pandas.DataFrame
-        Une matrice de facteurs pour chaque actif.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Une matrice de covariance des actifs.
-    """
-    # Calcule la covariance des facteurs
-    factor_covariance = factor_returns.cov()
-    # Transpose la matrice de facteurs
-    asset_exposures = factor_matrix.T
-    # Calcule la matrice de covariance des actifs en multipliant les expositions des actifs par la covariance des facteurs
-    return asset_exposures.T.dot(factor_covariance).dot(asset_exposures)
-
-
-def portfolio_variance(weights: np.ndarray, asset_covariance: pd.DataFrame) -> float:
-    """
-    Calcule la variance du portefeuille à partir des poids des actifs et de la matrice de covariance des actifs.
-
-    Parameters
-    ----------
-    weights : numpy.ndarray
-        Un tableau numpy contenant les poids pour chaque actif.
-    asset_covariance : pandas.DataFrame
-        Une matrice de covariance des actifs.
-
-    Returns
-    -------
-    float
+    numpy ndarray
         La variance du portefeuille.
+
     """
-    # Calcule la variance du portefeuille en multipliant les poids des actifs par la matrice de covariance des actifs
-    return weights.T.dot(asset_covariance).dot(weights)
+
+    return np.dot(weights.T, np.dot(cov_matrix, weights))
 
 
-def portfolio_return(weights: np.ndarray, mean_returns: pd.Series) -> float:
+def get_bootstrap_samples(returns: pd.DataFrame, n_samples: int = 252) -> np.ndarray:
     """
-    Calcule le rendement du portefeuille à partir des poids des actifs et des rendements moyens des actifs.
+    Génère des échantillons bootstrap de la distribution des rendements.
+    On utilise une normale multivariée pour générer les échantillons.
 
     Parameters
     ----------
-    weights : numpy.ndarray
-        Un tableau numpy contenant les poids pour chaque actif.
-    mean_returns : pandas.Series
-        Une série contenant les rendements moyens pour chaque actif.
+    returns : pandas DataFrame
+        DataFrame contenant les rendements des actifs.
+
+    n_samples : int, optional
+        Nombre d'échantillons à générer, par défaut 252.
 
     Returns
     -------
-    float
-        Le rendement du portefeuille.
+    numpy ndarray
+        Les échantillons bootstrap des rendements.
+
     """
-    # Calcule le rendement du portefeuille en multipliant les poids des actifs par les rendements moyens des actifs
-    return weights.T.dot(mean_returns)
+
+    cov_matrix = returns.cov().to_numpy() + np.eye(returns.shape[1]) * 1e-8
+    mean_returns = returns.mean().to_numpy()
+    return np.random.multivariate_normal(mean_returns, cov_matrix, n_samples)
 
 
-def negative_sharpe_ratio(weights: np.ndarray, mean_returns: pd.Series, asset_covariance: pd.DataFrame,
-                          risk_free_rate: float = 0.02) -> float:
+def min_variance_portfolio(cov_matrix: np.ndarray,
+                           gics_sectors: pd.DataFrame,
+                           sector_constraints: Tuple[float, float],
+                           period_returns_clean: pd.DataFrame) -> np.ndarray:
     """
-    Calcule le ratio de Sharpe négatif pour un portefeuille à partir des poids des actifs, des rendements moyens des actifs, de la matrice de covariance des actifs et du taux sans risque.
+    Trouve les poids du portefeuille avec la variance minimale sous contraintes.
 
     Parameters
     ----------
-    weights : numpy.ndarray
-        Un tableau numpy contenant les poids pour chaque actif.
-    mean_returns : pandas.Series
-        Une série contenant les rendements moyens pour chaque actif.
-    asset_covariance : pandas.DataFrame
-        Une matrice de covariance des actifs.
-    risk_free_rate : float, optional
-        Le taux sans risque. Default is 0.02.
+    cov_matrix : numpy ndarray
+        Matrice de covariance des rendements.
+
+    gics_sectors : pandas DataFrame
+        DataFrame contenant les classifications sectorielles GICS des actifs.
+
+    sector_constraints : tuple of two floats
+        Limites de pondération sectorielle pour les poids des actions.
+
+    period_returns_clean : pandas DataFrame
+        DataFrame contenant les rendements des actifs.
 
     Returns
     -------
-    float
-        Le ratio de Sharpe négatif pour le portefeuille.
+    numpy ndarray
+        Les poids du portefeuille avec la variance minimale.
+
     """
-    # Calcule le rendement et la variance du portefeuille
-    port_return = portfolio_return(weights, mean_returns)
-    port_variance = portfolio_variance(weights, asset_covariance)
-    # Calcule le ratio de Sharpe négatif en utilisant le rendement et la variance du portefeuille ainsi que le taux sans risque
-    return -(port_return - risk_free_rate) / np.sqrt(port_variance)
 
+    n_assets = cov_matrix.shape[0]
 
-def sum_weights_constraint(weights: np.ndarray) -> float:
-    """
-    Contrainte pour s'assurer que les poids des actifs somment à 1.
+    # Initialiser les poids de manière égale
+    initial_weights = np.ones(n_assets) / n_assets
 
-    Parameters
-    ----------
-    weights : numpy.ndarray
-        Un tableau numpy contenant les poids pour chaque actif.
+    # Bornes pour les poids
+    bounds = [(0, 1) for _ in range(n_assets)]
 
-    Returns
-    -------
-    float
-        La somme des poids des actifs, qui doit être égale à 1.
-    """
-    # Retourne la somme des poids des actifs, qui doit être égale à 1
-    return np.sum(weights) - 1
+    # Contrainte globale pour la somme des poids égale à 1
+    total_weight_constraint = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
 
+    # Contraintes sectorielles pour les poids des actions
+    sector_constraint = []
+    unique_sectors = gics_sectors["GICS Sector"].unique()
+    for sector in unique_sectors:
+        sector_indices = (gics_sectors.loc[gics_sectors["GICS Sector"] == sector]
+                          .index.intersection(period_returns_clean.columns).tolist())
+        sector_constraint.append({
+            "type": "ineq",
+            "fun": lambda x, s=sector_indices: np.sum(x[s]) - sector_constraints[0],
+        })
+        sector_constraint.append({
+            "type": "ineq",
+            "fun": lambda x, s=sector_indices: sector_constraints[1] - np.sum(x[s]),
+        })
 
-def optimize_portfolio(rendements: pd.DataFrame, asset_covariance: pd.DataFrame, sector_constraints: list,
-                       individual_constraints: float) -> np.ndarray:
-    """
-    Optimise les poids des actifs pour maximiser le ratio de Sharpe en utilisant
-    l'optimiseur de SciPy.
+    # Contraintes totales
+    constraints = [total_weight_constraint] + sector_constraint
 
-    Parameters
-    ----------
-    rendements : pandas.DataFrame
-        Un DataFrame contenant les rendements des actifs.
-    asset_covariance : pandas.DataFrame
-        Une matrice de covariance des actifs.
-    sector_constraints : list
-        Une liste de contraintes de secteur qui doivent être respectées.
-    individual_constraints : float
-        La limite individuelle pour chaque poids d'actif.
+    # Minimiser la variance
+    result = minimize(portfolio_variance,
+                      initial_weights,
+                      args=(cov_matrix,),
+                      bounds=bounds,
+                      constraints=constraints)
 
-    Returns
-    -------
-    numpy.ndarray
-        Les poids des actifs optimisés.
-    """
-    # Initialise les poids des actifs à des valeurs égales pour tous les actifs
-    initial_weights = np.ones(len(rendements.columns)) / len(rendements.columns)
-    # Définit les bornes pour les poids des actifs
-    bounds = [(0, individual_constraints) for _ in range(len(rendements.columns))]
-    # Définit les contraintes pour s'assurer que les poids des actifs respectent les limites et les contraintes de secteur
-    constraints = [{'type': 'eq', 'fun': sum_weights_constraint}] + sector_constraints
-    # Applique la méthode de minimisation de SciPy pour obtenir les poids des actifs optimisés
-    result = minimize(negative_sharpe_ratio, initial_weights,
-                      args=(rendements.mean(), asset_covariance),
-                      bounds=bounds, constraints=constraints, method='SLSQP')
     return result.x
 
 
-def rebalance_portfolio(rendements: pd.DataFrame, gics_sectors: pd.DataFrame, rebalance_dates: pd.DatetimeIndex,
-                        sector_limit: float = 0.4, individual_limit: float = 0.05) -> pd.DataFrame:
+def resampled_ef_portfolio(returns: pd.DataFrame,
+                            gics_sectors: pd.DataFrame,
+                            sector_constraints: Tuple[float, float],
+                            n_bootstrap: int = 3) -> np.ndarray:
     """
-    Rééquilibre un portefeuille en utilisant la méthode de l'optimisation des poids des actifs pour maximiser le ratio de Sharpe.
+    Génère un portefeuille optimal en utilisant la méthode de l'échantillonnage bootstrap.
 
     Parameters
     ----------
-    rendements : pandas.DataFrame
-        Un DataFrame contenant les rendements des actifs.
-    gics_sectors : pandas.DataFrame
-        Un DataFrame contenant les secteurs GICS pour chaque actif.
-    rebalance_dates : pandas.DatetimeIndex
-        Une DatetimeIndex contenant les dates de rééquilibrage.
-    sector_limit : float, optional
-        La limite de poids de secteur pour chaque secteur. Default is 0.4.
-    individual_limit : float, optional
-        La limite de poids d'actif pour chaque actif. Default is 0.05.
+    returns : pandas DataFrame
+        DataFrame contenant les rendements des actifs.
+
+    gics_sectors : pandas DataFrame
+        DataFrame contenant les classifications sectorielles GICS des actifs.
+
+    sector_constraints : tuple of two floats
+        Limites de pondération sectorielle pour les poids des actions.
+
+    n_bootstrap : int, optional
+        Nombre d'échantillons bootstrap à générer, par défaut 3.
 
     Returns
     -------
-    pandas.DataFrame
-        Un DataFrame contenant les poids des actifs rééquilibrés pour chaque date de rééquilibrage.
+    numpy ndarray
+        Les poids du portefeuille optimal.
+
     """
-    # Crée une matrice de facteurs pour les secteurs GICS
-    factor_matrix = create_factor_matrix(gics_sectors)
-    asset_weights = []
 
-    for idx, rebalance_date in enumerate(rebalance_dates):
-        # Définit la période pour le calcul des rendements et des facteurs
-        end_date = rebalance_date - pd.DateOffset(days=1)
-        start_date = end_date - pd.DateOffset(years=1) if idx == 0 else rebalance_dates[idx - 1]
-        # Sélectionne les colonnes avec des valeurs non nulles
-        rendements_period = rendements.loc[start_date:end_date].dropna(axis=1)
-        # Sélectionne les facteurs correspondant aux actifs sélectionnés
-        factor_matrix_period = factor_matrix.loc[rendements_period.columns]
-        # Calcule les rendements des facteurs
-        factor_returns = calculate_factor_returns(rendements_period,
-                                                  factor_matrix_period)
-        # Calcule la matrice de covariance des actifs en fonction des rendements des facteurs
-        asset_covariance = calculate_asset_covariance(factor_returns,
-                                                      factor_matrix_period)
+    def single_bootstrap_iteration(_, returns: pd.DataFrame):
+        # Générer un échantillon bootstrap de la distribution des rendements
+        bootstrap_returns = get_bootstrap_samples(returns)
 
-        # Définit les contraintes de secteur pour chaque secteur
-        sector_constraints = []
-        for sector in gics_sectors['GICS Sector'].unique():
-            index = (gics_sectors['GICS Sector'] == sector) & gics_sectors[
-                'Ticker'].isin(rendements_period.columns)
-            constraint = {'type': 'ineq', 'fun': lambda w, i=index.loc[
-                rendements_period.columns]: sector_limit - np.sum(w[i])}
-            sector_constraints.append(constraint)
+        # Calculer la matrice de covariance pour l'échantillon bootstrap
+        bootstrap_cov_matrix = np.cov(bootstrap_returns.T)
 
-        # Définit les bornes pour les poids des actifs
-        bounds = [(0, individual_limit) for _ in
-                  range(len(rendements_period.columns))]
-        # Applique l'optimisation pour obtenir les poids des actifs rééquilibrés
-        optimal_weights = optimize_portfolio(rendements_period,
-                                             asset_covariance,
-                                             sector_constraints,
-                                             individual_limit)
+        # Trouver les poids du portefeuille avec la variance minimale pour l'échantillon bootstrap
+        return min_variance_portfolio(bootstrap_cov_matrix,
+                                       gics_sectors,
+                                       sector_constraints,
+                                       returns)
 
-        # Crée une série de poids pour chaque actif
-        asset_weights_period = pd.Series(np.zeros(len(rendements.columns)),
-                                         index=rendements.columns)
-        asset_weights_period[rendements_period.columns] = optimal_weights
-        # Ajoute les poids des actifs rééquilibrés pour la période actuelle
-        asset_weights.append(asset_weights_period.values)
+    # Utiliser ThreadPoolExecutor pour exécuter plusieurs itérations bootstrap en parallèle
+    with ThreadPoolExecutor() as executor:
+        optimal_weights_array = list(executor.map(single_bootstrap_iteration,
+                                                   range(n_bootstrap),
+                                                   [returns] * n_bootstrap))
 
-    # Crée un DataFrame des poids des actifs rééquilibrés pour chaque date de rééquilibrage
-    return pd.DataFrame(asset_weights, index=rebalance_dates,
-                        columns=rendements.columns)
+    # Moyenner les poids optimaux sur les itérations bootstrap
+    optimal_weights = np.sum(optimal_weights_array, axis=0) / n_bootstrap
+
+    return optimal_weights
 
 
-df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
-print(df_total_ret_filtered)
-rendements = calculate_returns(df_total_ret_filtered)
-rebalance_dates = get_rebalance_dates(rendements)
-gics_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
+def resampled_ef_weights_by_rebalance_dates(returns: pd.DataFrame,
+                                             rebalance_dates: pd.DatetimeIndex,
+                                             gics_sectors: pd.DataFrame,
+                                             sector_constraints: Tuple[float, float]) -> pd.DataFrame:
+    """
+    Calcule les poids du portefeuille optimal pour chaque période de
+    rééquilibrage à l'aide de la méthode de l'échantillonnage bootstrap.
 
-# Exécuter la fonction de rééquilibrage du portefeuille avec les rendements, les secteurs GICS et les dates de rééquilibrage
-optimized_weights = rebalance_portfolio(rendements, gics_sectors, rebalance_dates)
+    Parameters
+    ----------
+    returns : pandas DataFrame
+        DataFrame contenant les rendements des actifs.
 
-print(optimized_weights)
-print(calculate_sector_weights(optimized_weights, gics_sectors))
+    rebalance_dates : pandas DatetimeIndex
+        Dates de rééquilibrage du portefeuille.
 
+    gics_sectors : pandas DataFrame
+        DataFrame contenant les classifications sectorielles GICS des actifs.
+
+    sector_constraints : tuple of two floats
+        Limites de pondération sectorielle pour les poids des actions.
+
+    Returns
+    -------
+    pandas DataFrame
+        Les poids du portefeuille optimal pour chaque période de rééquilibrage.
+
+    """
+
+    # Liste des poids du portefeuille pour chaque période de rééquilibrage
+    rebalance_weights = []
+
+    # Itérer sur chaque période de rééquilibrage et calculer les poids optimaux
+    for start_date, end_date in zip(rebalance_dates[:-1], rebalance_dates[1:]):
+        print(f"Calculating weights for period {start_date} to {end_date}...")
+
+        # Extraire les rendements pour la période courante
+        period_returns = returns.loc[start_date:end_date]
+
+        # Supprimer les colonnes avec des NaN values
+        period_returns_clean = period_returns.dropna(axis=1)
+
+        # Optimiser le portefeuille avec les colonnes restantes
+        optimal_weights = resampled_ef_portfolio(period_returns_clean,
+                                                  gics_sectors,
+                                                  sector_constraints)
+
+        # Réintégrer les colonnes supprimées avec des poids de 0
+        full_weights = pd.Series(0, index=returns.columns)
+        full_weights[period_returns_clean.columns] = optimal_weights
+
+        # Ajouter les poids pour la période courante à la liste
+        rebalance_weights.append(full_weights.values)
+        print(f"Optimal weights: {full_weights}")
+
+    # Convertir la liste de poids en DataFrame
+    rebalance_weights_df = pd.DataFrame(rebalance_weights,
+                                         index=rebalance_dates[:-1],
+                                         columns=returns.columns)
+
+    return rebalance_weights_df
+
+
+if __name__ == "__main__":
+    # Paramètres
+    sector_max_weight = 0.4
+
+
+    # df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
+    # rendements = calculate_returns(df_total_ret_filtered)
+    # rebalance_dates = get_rebalance_dates(rendements)
+    gics_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
+    #
+    # weights = resampled_ef_weights_by_rebalance_dates(
+    #     rendements,
+    #     gics_sectors=gics_sectors,
+    #     sector_constraints=(0.05, 0.4),
+    #     rebalance_dates=rebalance_dates,
+    # )
+    # weights.to_parquet("results_data/other_strategy_weights.parquet")
+
+    weights = pd.read_parquet("results_data/other_strategy_weights.parquet")
+    sector_weights = calculate_sector_weights(weights=weights, df_sectors=gics_sectors)
+
+    sector_weights.to_parquet("results_data/other_strategy_sector_weights.parquet")
+
+
+
+    are_sectors_constraints_respected = check_sector_constraints(
+        weights=weights,
+        df_sectors=gics_sectors,
+        verbose=True,
+        sector_max_weight=sector_max_weight,
+    )
+
+    if are_sectors_constraints_respected:
+        print("\nToutes les contraintes sectorielles sont respectées.")
+    else:
+        print(
+            "\nDes erreurs ont été trouvées dans les contraintes sectorielles.")
+
+    sum_to_one = check_weights_sum_to_one(weights)
+
+    if sum_to_one:
+        print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
+    else:
+        print(
+            "\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")

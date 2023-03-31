@@ -4,11 +4,9 @@ from numpy import ndarray
 
 from filter import get_rebalance_dates
 from base_strategy import (
-    inverse_volatility_strategy,
     calculate_returns,
     calculate_volatility,
     apply_sector_constraints,
-    redistribute_weights,
     calculate_sector_weights,
 )
 from base_strategy import (
@@ -31,8 +29,46 @@ def inverse_volatility_and_skewness_strategy(
     vol_weight: float = 0.7,  # Poids de l'inverse de la volatilité
     skew_weight: float = 0.3,  # Poids de la skewness négative
 ) -> pd.DataFrame:
+    """
+    Applique une stratégie de poids de portefeuille basée sur l'inverse de
+    la volatilité et la skewness négative.
+
+    Parameters
+    ----------
+    df_prices : pandas DataFrame
+        DataFrame contenant les prix quotidiens des actifs.
+
+    rebalance_dates : pandas DatetimeIndex
+        Liste de dates de rééquilibrage du portefeuille.
+
+    gics_sectors : pandas DataFrame
+        DataFrame contenant les classifications sectorielles GICS des actifs.
+
+    max_weight : float, optional
+        Poids maximum autorisé pour un actif individuel, par défaut 0.05.
+
+    min_weight : float, optional
+        Poids minimum autorisé pour un actif individuel, par défaut 0.0005.
+
+    sector_max_weight : float, optional
+        Poids maximum autorisé pour un secteur, par défaut 0.4.
+
+    vol_weight : float, optional
+        Poids de l'inverse de la volatilité dans la combinaison pondérée, par défaut 0.7.
+
+    skew_weight : float, optional
+        Poids de la skewness négative dans la combinaison pondérée, par défaut 0.3.
+
+    Returns
+    -------
+    pandas DataFrame
+        DataFrame contenant les poids du portefeuille à chaque date de rééquilibrage.
+
+    """
+
     # Calculer les rendements quotidiens
     df_returns = calculate_returns(df_prices)
+
     # DataFrame contenant les poids du portefeuille à chaque date de rééquilibrage
     weights = pd.DataFrame(index=rebalance_dates, columns=df_prices.columns)
 
@@ -42,12 +78,18 @@ def inverse_volatility_and_skewness_strategy(
         else:
             one_year_start_date = rebalance_dates[idx - 1] + pd.DateOffset(days=1)
 
+        # Sélectionner les rendements de l'année écoulée jusqu'à la date de rééquilibrage
         one_year_returns = df_returns.loc[one_year_start_date:rebalance_date]
+
+        # Calculer la volatilité sur l'année écoulée jusqu'à la date de rééquilibrage
         one_year_volatility = calculate_volatility(
             one_year_returns, window=len(one_year_returns)
         ).iloc[-1]
+
+        # Calculer la skewness négative sur l'année écoulée jusqu'à la date de rééquilibrage
         one_year_skewness = one_year_returns.skew()
 
+        # Calculer l'inverse de la volatilité et remplacer les valeurs infinies par NaN
         inverse_volatility = 1 / one_year_volatility
         inverse_volatility.replace([np.inf, -np.inf], np.nan, inplace=True)
 
@@ -98,18 +140,19 @@ if __name__ == "__main__":
         df_prices, rebalance_dates, gics_sectors
     )
 
-    sector_weights = calculate_sector_weights(weights=weights,
-                                              df_sectors=gics_sectors)
+    sector_weights = calculate_sector_weights(weights=weights, df_sectors=gics_sectors)
     print(sector_weights)
     print(sector_weights.max(axis=0))
     # save weights to parquet in converted_data folder
     weights.to_parquet("results_data/new_strategy_weights.parquet")
-    sector_weights.to_parquet(
-        "results_data/new_strategy_sector_weights.parquet")
+    sector_weights.to_parquet("results_data/new_strategy_sector_weights.parquet")
     print(weights.iloc[:10, :10])
 
     are_weight_constraints_respected = check_weight_constraints(
-        weights=weights, min_weight=min_weight, max_weight=max_weight, verbose=True
+        weights=weights,
+        min_weight=min_weight,
+        max_weight=max_weight,
+        verbose=True,
     )
 
     if are_weight_constraints_respected:
@@ -120,7 +163,10 @@ if __name__ == "__main__":
         )
 
     are_sectors_constraints_respected = check_sector_constraints(
-        weights=weights, df_sectors=gics_sectors, verbose=False
+        weights=weights,
+        df_sectors=gics_sectors,
+        sector_max_weight=sector_max_weight,
+        verbose=False,
     )
 
     if are_sectors_constraints_respected:
@@ -134,7 +180,3 @@ if __name__ == "__main__":
         print("\nLes poids somment à 1 pour chaque date de rééquilibrage.")
     else:
         print("\nLes poids ne somment pas à 1 pour certaines dates de rééquilibrage.")
-
-
-
-

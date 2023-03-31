@@ -74,7 +74,6 @@ def apply_sector_constraints(
     max_weight: float,
     sector_max_weight: float,
 ) -> pd.Series:
-
     # Appliquer les contraintes de poids individuelles aux actions de tous les secteurs
     weights = weights.clip(lower=min_weight, upper=max_weight)
 
@@ -318,19 +317,16 @@ def check_sector_constraints(
     constraints_respected = True
 
     for date in rebalance_dates:
-        if verbose:
-            print(f"\nVérification des contraintes sectorielles pour la date {date}:")
-
         sector_weights_on_date = sector_weights_df.loc[date]
 
         for sector, weight in sector_weights_on_date.items():
-            if verbose:
-                print(f" - {sector}: {weight:.2%}")
             if weight > sector_max_weight:
                 constraints_respected = False
                 if verbose:
                     print(
-                        f"   [ERREUR] La contrainte de poids sectorielle n'est pas respectée pour le secteur {sector} à la date {date}"
+                        f"   [ERREUR] La contrainte de poids sectorielle "
+                        f"n'est pas respectée pour le secteur {sector} "
+                        f"({100 * weight:.2f}%) à la date {date}"
                     )
 
     return constraints_respected
@@ -363,15 +359,16 @@ def check_weights_sum_to_one(weights: pd.DataFrame, tolerance: float = 1e-6) -> 
 if __name__ == "__main__":
     # Paramètres
     min_weight = 0.0005
-    max_weight = 0.04
+    max_weight = 0.05
     sector_max_weight = 0.4
     # Charger les données
     df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
     df_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
 
+    rebalance_dates = get_rebalance_dates(df_total_ret_filtered)
+
     print("Calcul des poids de l'investissement...")
 
-    rebalance_dates = get_rebalance_dates(df_total_ret_filtered)
     weights = inverse_volatility_strategy(
         df_prices=df_total_ret_filtered,
         rebalance_dates=rebalance_dates,
@@ -400,7 +397,10 @@ if __name__ == "__main__":
         )
 
     are_sectors_constraints_respected = check_sector_constraints(
-        weights=weights, df_sectors=df_sectors, verbose=False
+        weights=weights,
+        df_sectors=df_sectors,
+        verbose=True,
+        sector_max_weight=sector_max_weight,
     )
 
     if are_sectors_constraints_respected:
