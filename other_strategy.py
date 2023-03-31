@@ -33,21 +33,22 @@ des paramètres de la distribution.
 La fonction resampled_ef_portfolio effectue les étapes suivantes pour générer 
 un portefeuille optimal :
 
-1. Générer n_bootstrap échantillons bootstrap de la distribution des rendements 
+3. Générer n_bootstrap échantillons bootstrap de la distribution des rendements 
 en utilisant une normale multivariée.
 Pour chaque échantillon bootstrap :
 a. Calculer la matrice de covariance des rendements de l'échantillon.
 b. Trouver les poids du portefeuille avec la variance minimale en utilisant la 
 matrice de covariance et les contraintes sectorielles.
 
-2. Moyenner les poids optimaux sur les échantillons bootstrap.
+4. Moyenner les poids optimaux sur les échantillons bootstrap.
 
 En résumé, cette stratégie utilise la méthode de l'échantillonnage bootstrap 
 pour estimer la distribution des rendements et générer un portefeuille optimal 
 en minimisant la variance sous contraintes sectorielles. Le but est de construire 
-un portefeuille diversifié qui minimise le risque.
+un portefeuille diversifié qui minimise le risque de manière plus robuste.
 
 Attention: cette stratégie prend beaucoup de temps à tourner."""
+
 
 def portfolio_variance(weights: np.ndarray, cov_matrix: np.ndarray) -> ndarray:
     """

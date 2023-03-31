@@ -1,10 +1,6 @@
-from typing import Any
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import os
-from typing import List, Union
-import pandas as pd
+from typing import List, Union, Any
 
 
 def xlsx_to_parquet(xlsx_file: str, parquet_file: str) -> None:
@@ -222,6 +218,7 @@ def move_file_to_directory(file_path: str, dest_directory: str) -> None:
 if "__main__" == __name__:
     # Convertit les fichiers Excel en fichiers Parquet.
     # Fonctionne seulement si aucun Excel n'est ouvert en simultané.
+    # Note : Les deuxièmes lignes des fichiers excels ont été supprimées manuellement
     convert_xlsx_files_to_parquet(get_xlsx_files_in_folder("data"))
 
     # Chargement des données pour vérifier que tout s'affiche correctement

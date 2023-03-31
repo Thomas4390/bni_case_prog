@@ -17,7 +17,8 @@ c. Calculer l'inverse de la volatilité et remplacer les valeurs infinies par Na
 d. Normaliser les valeurs de l'inverse de la volatilité (diviser chaque valeur par la somme de toutes les valeurs).
 e. Stocker les poids normalisés dans le DataFrame weights.
 
-3. Appliquer les contraintes de poids individuelles (min_weight, max_weight) et sectorielles (sector_max_weight) aux poids normalisés.
+3. Appliquer les contraintes de poids individuelles (min_weight, max_weight) 
+et sectorielles (sector_max_weight) aux poids normalisés.
 
 4. Redistribuer les poids pour s'assurer que leur somme est égale à 1.
 

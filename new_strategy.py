@@ -14,7 +14,7 @@ from base_strategy import (
 )
 
 """Cette stratégie d'investissement est basée sur l'inverse de la volatilité et 
-la skewness négative des actifs du portefeuille. Elle vise à attribuer des poids 
+la skewness positive des actifs du portefeuille. Elle vise à attribuer des poids 
 aux actifs en tenant compte de ces deux mesures. Voici un aperçu du fonctionnement de la stratégie:
 
 1. Calculer les rendements quotidiens des actifs à partir des prix.
@@ -22,10 +22,10 @@ aux actifs en tenant compte de ces deux mesures. Voici un aperçu du fonctionnem
 2. Pour chaque date de rééquilibrage :
 a. Sélectionner les rendements de l'année écoulée jusqu'à la date de rééquilibrage.
 b. Calculer la volatilité annuelle de chaque actif.
-c. Calculer la skewness négative de chaque actif.
+c. Calculer la skewness positive de chaque actif.
 d. Calculer l'inverse de la volatilité et normaliser les valeurs.
-e. Normaliser les valeurs de skewness négative.
-f. Créer une combinaison pondérée de l'inverse de la volatilité et de la skewness négative en utilisant les poids vol_weight et skew_weight.
+e. Normaliser les valeurs de skewness positive.
+f. Créer une combinaison pondérée de l'inverse de la volatilité et de la skewness positive en utilisant les poids vol_weight et skew_weight.
 
 3. Appliquer les contraintes de poids individuelles (min_weight, max_weight) et sectorielles (sector_max_weight) aux poids combinés.
 
@@ -34,12 +34,12 @@ f. Créer une combinaison pondérée de l'inverse de la volatilité et de la ske
 5. Stocker les poids du portefeuille rééquilibré pour chaque date de rééquilibrage dans un DataFrame.
 
 La stratégie alloue des poids plus importants aux actifs ayant une faible volatilité 
-et une skewness négative importante. L'objectif est de diversifier le portefeuille en 
+et une skewness positive importante. L'objectif est de diversifier le portefeuille en 
 tenant compte de ces deux caractéristiques, afin de minimiser les risques et de 
 potentiellement améliorer les rendements.
 
 Le paramètre vol_weight détermine l'importance de l'inverse de la volatilité dans la combinaison pondérée, 
-tandis que le paramètre skew_weight détermine l'importance de la skewness négative. 
+tandis que le paramètre skew_weight détermine l'importance de la skewness positive. 
 En ajustant ces paramètres, vous pouvez modifier la manière dont la stratégie 
 attribue des poids aux actifs en fonction de leur volatilité et de leur skewness."""
 
@@ -52,11 +52,11 @@ def inverse_volatility_and_skewness_strategy(
     min_weight: float = 0.0005,
     sector_max_weight: float = 0.4,
     vol_weight: float = 0.7,  # Poids de l'inverse de la volatilité
-    skew_weight: float = 0.3,  # Poids de la skewness négative
+    skew_weight: float = 0.3,  # Poids de la skewness positive
 ) -> pd.DataFrame:
     """
     Applique une stratégie de poids de portefeuille basée sur l'inverse de
-    la volatilité et la skewness négative.
+    la volatilité et la skewness positive.
 
     Parameters
     ----------
@@ -82,7 +82,7 @@ def inverse_volatility_and_skewness_strategy(
         Poids de l'inverse de la volatilité dans la combinaison pondérée, par défaut 0.7.
 
     skew_weight : float, optional
-        Poids de la skewness négative dans la combinaison pondérée, par défaut 0.3.
+        Poids de la skewness positive dans la combinaison pondérée, par défaut 0.3.
 
     Returns
     -------
@@ -120,13 +120,13 @@ def inverse_volatility_and_skewness_strategy(
 
         # Normaliser l'inverse de la volatilité et la skewness négative
         normalized_inverse_volatility = inverse_volatility / inverse_volatility.sum()
-        negative_skewness = -one_year_skewness
-        normalized_negative_skewness = negative_skewness / negative_skewness.sum()
+        positive_skewness = one_year_skewness
+        normalized_positive_skewness = positive_skewness / positive_skewness.sum()
 
         # Combinaison pondérée de l'inverse de la volatilité et de la skewness négative
         combined_weights = (
             vol_weight * normalized_inverse_volatility
-            + skew_weight * normalized_negative_skewness
+            + skew_weight * normalized_positive_skewness
         )
         weights.loc[rebalance_date] = combined_weights
 

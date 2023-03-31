@@ -161,6 +161,12 @@ if __name__ == "__main__":
         df_total_ret, df_weights_os
     )
 
+    # sauvegarde des rendements quotidiens dans results data
+    portfolio_daily_returns_bs.to_csv("results_data/base_strategy_daily_returns.csv")
+    portfolio_daily_returns_ns.to_csv("results_data/new_strategy_daily_returns.csv")
+    portfolio_daily_returns_os.to_csv("results_data/other_strategy_daily_returns.csv")
+
+
     daily_drifted_weights_bs = calculate_daily_drifted_weights(df_weights_bs, df_total_ret)
     daily_drifted_weights_ns = calculate_daily_drifted_weights(df_weights_ns, df_total_ret)
     daily_drifted_weights_os = calculate_daily_drifted_weights(df_weights_os, df_total_ret)
