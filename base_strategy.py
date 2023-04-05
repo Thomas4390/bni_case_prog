@@ -28,6 +28,7 @@ La stratégie alloue des poids plus importants aux actifs ayant une faible volat
 L'objectif est de diversifier le portefeuille en tenant compte de la volatilité 
 des actifs, afin de minimiser les risques."""
 
+
 def calculate_returns(df_prices: pd.DataFrame) -> pd.DataFrame:
     """
     Calcule les rendements quotidiens pour chaque action.

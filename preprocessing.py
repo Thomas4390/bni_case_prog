@@ -175,9 +175,6 @@ def read_data(file_name: str) -> pd.DataFrame:
     return df
 
 
-import os
-
-
 def move_file_to_directory(file_path: str, dest_directory: str) -> None:
     """
     Move a file to a specified destination directory.
