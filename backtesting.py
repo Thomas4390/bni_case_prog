@@ -167,15 +167,24 @@ if __name__ == "__main__":
 
     # sauvegarde des rendements quotidiens dans results data
     portfolio_daily_returns_bs.to_csv("results_data/base_strategy_daily_returns.csv")
-    portfolio_daily_returns_bs_nc.to_csv("results_data/base_strategy_daily_returns_nc.csv")
+    portfolio_daily_returns_bs_nc.to_csv(
+        "results_data/base_strategy_daily_returns_nc.csv"
+    )
     portfolio_daily_returns_ns.to_csv("results_data/new_strategy_daily_returns.csv")
     portfolio_daily_returns_os.to_csv("results_data/other_strategy_daily_returns.csv")
 
-
-    daily_drifted_weights_bs = calculate_daily_drifted_weights(df_weights_bs, df_total_ret)
-    daily_drifted_weights_bs_nc = calculate_daily_drifted_weights(df_weights_bs_nc, df_total_ret)
-    daily_drifted_weights_ns = calculate_daily_drifted_weights(df_weights_ns, df_total_ret)
-    daily_drifted_weights_os = calculate_daily_drifted_weights(df_weights_os, df_total_ret)
+    daily_drifted_weights_bs = calculate_daily_drifted_weights(
+        df_weights_bs, df_total_ret
+    )
+    daily_drifted_weights_bs_nc = calculate_daily_drifted_weights(
+        df_weights_bs_nc, df_total_ret
+    )
+    daily_drifted_weights_ns = calculate_daily_drifted_weights(
+        df_weights_ns, df_total_ret
+    )
+    daily_drifted_weights_os = calculate_daily_drifted_weights(
+        df_weights_os, df_total_ret
+    )
 
     # sauvegarde des daily drifted weights dans results data
     daily_drifted_weights_bs.to_parquet("results_data/base_strategy_ddw.parquet")
@@ -186,10 +195,6 @@ if __name__ == "__main__":
     benchmark_daily_returns = compute_benchmark_returns(
         benchmark_prices, weights=df_weights_bs
     )
-
-    portfolio_daily_returns_bs_nc.columns = ["BSNC"]
-
-
 
     # Calcul des métriques de performance en utilisant le package quantstats
     qs.extend_pandas()
@@ -240,12 +245,10 @@ if __name__ == "__main__":
         match_dates=True,
     )
 
-
     print("Rapport de backtesting généré avec succès!")
 
     move_file_to_directory("base_strategy_metrics.html", "results_data")
     move_file_to_directory("base_strategy_nc_metrics.html", "results_data")
     move_file_to_directory("new_strategy_metrics.html", "results_data")
     move_file_to_directory("other_strategy_metrics.html", "results_data")
-    move_file_to_directory("base_strategy_vs_nc_metrics.html", "results_data")
 

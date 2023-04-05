@@ -21,7 +21,9 @@ def plot_sector_weights(weights: pd.DataFrame, strategy_name: str) -> None:
     # Afficher les poids des secteurs
     fig, ax = plt.subplots(figsize=(15, 8))
     weights.plot.area(ax=ax)
-    ax.set_title(f"Évolution du poids des secteurs GICS au cours du temps en aire | {strategy_name}")
+    ax.set_title(
+        f"Évolution du poids des secteurs GICS au cours du temps en aire | {strategy_name}"
+    )
     ax.set_ylabel("Poids")
     ax.set_xlabel("Date")
     ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5))
