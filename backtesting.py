@@ -145,6 +145,7 @@ if __name__ == "__main__":
     # Lecture des données
     df_total_ret = pd.read_parquet("filtered_data/total_ret_data.parquet")
     df_weights_bs = pd.read_parquet("results_data/base_strategy_weights.parquet")
+    df_weights_bs_nc = pd.read_parquet("results_data/base_strategy_weights_nc.parquet")
     df_weights_ns = pd.read_parquet("results_data/new_strategy_weights.parquet")
     df_weights_os = pd.read_parquet("results_data/other_strategy_weights.parquet")
 
@@ -153,6 +154,9 @@ if __name__ == "__main__":
     # Calcul des rendements quotidiens du portefeuille
     portfolio_daily_returns_bs = compute_daily_portfolio_returns(
         df_total_ret, df_weights_bs
+    )
+    portfolio_daily_returns_bs_nc = compute_daily_portfolio_returns(
+        df_total_ret, df_weights_bs_nc
     )
     portfolio_daily_returns_ns = compute_daily_portfolio_returns(
         df_total_ret, df_weights_ns
@@ -163,22 +167,29 @@ if __name__ == "__main__":
 
     # sauvegarde des rendements quotidiens dans results data
     portfolio_daily_returns_bs.to_csv("results_data/base_strategy_daily_returns.csv")
+    portfolio_daily_returns_bs_nc.to_csv("results_data/base_strategy_daily_returns_nc.csv")
     portfolio_daily_returns_ns.to_csv("results_data/new_strategy_daily_returns.csv")
     portfolio_daily_returns_os.to_csv("results_data/other_strategy_daily_returns.csv")
 
 
     daily_drifted_weights_bs = calculate_daily_drifted_weights(df_weights_bs, df_total_ret)
+    daily_drifted_weights_bs_nc = calculate_daily_drifted_weights(df_weights_bs_nc, df_total_ret)
     daily_drifted_weights_ns = calculate_daily_drifted_weights(df_weights_ns, df_total_ret)
     daily_drifted_weights_os = calculate_daily_drifted_weights(df_weights_os, df_total_ret)
 
     # sauvegarde des daily drifted weights dans results data
     daily_drifted_weights_bs.to_parquet("results_data/base_strategy_ddw.parquet")
+    daily_drifted_weights_bs_nc.to_parquet("results_data/base_strategy_ddw_nc.parquet")
     daily_drifted_weights_ns.to_parquet("results_data/new_strategy_ddw.parquet")
     daily_drifted_weights_os.to_parquet("results_data/other_strategy_ddw.parquet")
 
     benchmark_daily_returns = compute_benchmark_returns(
         benchmark_prices, weights=df_weights_bs
     )
+
+    portfolio_daily_returns_bs_nc.columns = ["BSNC"]
+
+
 
     # Calcul des métriques de performance en utilisant le package quantstats
     qs.extend_pandas()
@@ -193,6 +204,17 @@ if __name__ == "__main__":
         title="Backtesting Base Strategy",
         output=True,
         download_filename="base_strategy_metrics.html",
+        match_dates=True,
+    )
+
+    backtesting_metrics_bs_nc = qs.reports.html(
+        portfolio_daily_returns_bs_nc,
+        benchmark_daily_returns,
+        rf=0.01,
+        mode="full",
+        title="Backtesting Base Strategy with No Constraints",
+        output=True,
+        download_filename="base_strategy_nc_metrics.html",
         match_dates=True,
     )
 
@@ -218,8 +240,12 @@ if __name__ == "__main__":
         match_dates=True,
     )
 
+
     print("Rapport de backtesting généré avec succès!")
 
     move_file_to_directory("base_strategy_metrics.html", "results_data")
+    move_file_to_directory("base_strategy_nc_metrics.html", "results_data")
     move_file_to_directory("new_strategy_metrics.html", "results_data")
     move_file_to_directory("other_strategy_metrics.html", "results_data")
+    move_file_to_directory("base_strategy_vs_nc_metrics.html", "results_data")
+

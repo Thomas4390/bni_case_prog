@@ -50,8 +50,12 @@ if __name__ == "__main__":
     df_weights_sectors_os = pd.read_parquet(
         "results_data/other_strategy_sector_weights.parquet"
     )
+    df_weights_sectors_bs_nc = pd.read_parquet(
+        "results_data/base_strategy_sector_weights_nc.parquet"
+    )
 
     # Afficher les poids des secteurs
     plot_sector_weights(df_weights_sectors_bs, strategy_name="base_strategy")
+    plot_sector_weights(df_weights_sectors_bs_nc, strategy_name="base_strategy_nc")
     plot_sector_weights(df_weights_sectors_ns, strategy_name="new_strategy")
     plot_sector_weights(df_weights_sectors_os, strategy_name="other_strategy")

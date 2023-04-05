@@ -427,9 +427,9 @@ def check_weights_sum_to_one(weights: pd.DataFrame, tolerance: float = 1e-6) -> 
 
 if __name__ == "__main__":
     # Paramètres
-    min_weight = 0.0005
-    max_weight = 0.05
-    sector_max_weight = 0.4
+    min_weight = 0.0
+    max_weight = 1
+    sector_max_weight = 1
     # Charger les données
     df_total_ret_filtered = pd.read_parquet("filtered_data/total_ret_data.parquet")
     df_sectors = pd.read_parquet("converted_data/Constituents GICS sectors.parquet")
@@ -450,8 +450,8 @@ if __name__ == "__main__":
     sector_weights = calculate_sector_weights(weights=weights, df_sectors=df_sectors)
 
     # save weights to parquet in converted_data folder
-    weights.to_parquet("results_data/base_strategy_weights.parquet")
-    sector_weights.to_parquet("results_data/base_strategy_sector_weights.parquet")
+    weights.to_parquet("results_data/base_strategy_weights_nc.parquet")
+    sector_weights.to_parquet("results_data/base_strategy_sector_weights_nc.parquet")
 
     are_weight_constraints_respected = check_weight_constraints(
         weights=weights, min_weight=min_weight, max_weight=max_weight, verbose=True
